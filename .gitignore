@@ -1,0 +1,26 @@
+# Machine-local environment, state, credentials, and backups
+/.env
+/.env.*
+!/.env.example
+/runtime/
+/backups/
+/benchmark-results.json
+config/secrets.dpapi.json
+config/oauth-tokens.dpapi.json
+config/personal-*
+
+# Generated logs and dependencies
+/logs/*
+!/logs/.gitkeep
+/frontend/node_modules/
+/.pnpm-store/
+__pycache__/
+*.py[cod]
+
+# Windows and editor metadata
+Thumbs.db
+Desktop.ini
+*.user
+*.suo
+.vs/
+.vscode/

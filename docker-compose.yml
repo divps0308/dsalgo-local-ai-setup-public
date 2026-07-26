@@ -1,0 +1,155 @@
+name: alienware-local-ai
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports: ["${OPEN_WEBUI_PORT:-3000}:8080"]
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OPENAI_API_BASE_URL: http://local-agent-gateway:8000/v1
+      OPENAI_API_KEY: ${AGENT_API_KEY}
+      WEBUI_AUTH: "true"
+      ENABLE_SIGNUP: "true"
+      TZ: ${TZ:-America/Chicago}
+    volumes: ["open-webui-data:/app/backend/data"]
+    depends_on:
+      local-agent-gateway: {condition: service_healthy}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    networks: [local-ai]
+    mem_limit: 3g
+
+  local-agent-gateway:
+    build: ./agent-gateway
+    container_name: local-agent-gateway
+    restart: unless-stopped
+    ports: ["${AGENT_GATEWAY_PORT:-8001}:8000"]
+    environment:
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      AGENT_API_KEY: ${AGENT_API_KEY}
+      AGENT_MAX_STEPS: ${AGENT_MAX_STEPS:-10}
+      AGENT_ALLOW_WRITES: ${AGENT_ALLOW_WRITES:-true}
+      AGENT_CONFIG_FILE: /config/agents.json
+      RUNTIME_POLICY_FILE: /config/runtime-policy.json
+      MODEL_REGISTRY_FILE: /config/models.json
+      AGENT_SECRET_FILE: /runtime/secrets.json
+      OAUTH_BROKER_URL: http://host.docker.internal:${OAUTH_BROKER_PORT:-3003}
+      OAUTH_BROKER_TOKEN_FILE: /runtime/oauth-broker/token
+      AGENT_WORKSPACE: /workspace
+      TZ: ${TZ:-America/Chicago}
+    volumes:
+      - ./config:/config:ro
+      - ./runtime:/runtime:ro
+      - ./workspace:/workspace
+      - ./logs:/logs
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks: [local-ai]
+    mem_limit: 2g
+
+  agent-studio:
+    build: ./agent-studio
+    container_name: local-agent-studio
+    restart: unless-stopped
+    ports: ["${AGENT_STUDIO_PORT:-3001}:8080"]
+    environment:
+      AGENT_CONFIG_FILE: /config/agents.json
+      RUNTIME_POLICY_FILE: /config/runtime-policy.json
+      MODEL_REGISTRY_FILE: /config/models.json
+      GATEWAY_URL: http://local-agent-gateway:8000
+      AGENT_API_KEY: ${AGENT_API_KEY}
+      OAUTH_BROKER_URL: http://host.docker.internal:${OAUTH_BROKER_PORT:-3003}
+      OAUTH_BROKER_TOKEN_FILE: /runtime/oauth-broker/token
+    volumes:
+      - ./config:/config
+      - ./runtime:/runtime:ro
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on:
+      local-agent-gateway: {condition: service_healthy}
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    networks: [local-ai]
+    mem_limit: 1g
+
+  postgres:
+    image: postgres:17-alpine
+    profiles: ["extended"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-localai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-localai}
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    networks: [local-ai]
+    mem_limit: 2g
+
+  redis:
+    image: redis:8-alpine
+    profiles: ["extended"]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes: ["redis-data:/data"]
+    networks: [local-ai]
+    mem_limit: 768m
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    profiles: ["extended"]
+    restart: unless-stopped
+    ports: ["${QDRANT_PORT:-6333}:6333"]
+    volumes: ["qdrant-data:/qdrant/storage"]
+    networks: [local-ai]
+    mem_limit: 2g
+
+  temporal-postgres:
+    image: postgres:16-alpine
+    profiles: ["temporal"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: ${TEMPORAL_POSTGRES_PASSWORD}
+    volumes: ["temporal-postgres-data:/var/lib/postgresql/data"]
+    networks: [local-ai]
+    mem_limit: 2g
+
+  temporal:
+    image: temporalio/auto-setup:latest
+    profiles: ["temporal"]
+    restart: unless-stopped
+    depends_on: [temporal-postgres]
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: ${TEMPORAL_POSTGRES_PASSWORD}
+      POSTGRES_SEEDS: temporal-postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+    ports: ["${TEMPORAL_PORT:-7233}:7233"]
+    networks: [local-ai]
+    mem_limit: 3g
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    profiles: ["temporal"]
+    restart: unless-stopped
+    depends_on: [temporal]
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports: ["${TEMPORAL_UI_PORT:-8088}:8080"]
+    networks: [local-ai]
+    mem_limit: 768m
+
+networks: {local-ai: {driver: bridge}}
+volumes:
+  open-webui-data:
+  postgres-data:
+  redis-data:
+  qdrant-data:
+  temporal-postgres-data:

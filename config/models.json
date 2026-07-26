@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "hardwareProfile": {
+    "gpu": "RTX 5090 Laptop",
+    "vramMB": 24576,
+    "systemRamGB": 64,
+    "reservedSystemRamGB": 24,
+    "notes": "Reserve RAM for Docker Desktop and a self-hosted Temporal development cluster."
+  },
+  "models": {
+    "general": {
+      "ollamaTag": "qwen3:14b-q4_K_M",
+      "displayName": "Qwen3 14B Q4_K_M",
+      "role": "general/tool agent",
+      "estimatedWeightsGB": 9.3,
+      "numCtx": 16384,
+      "temperature": 0.55,
+      "keepAlive": "5m",
+      "toolCalling": true
+    },
+    "coder": {
+      "ollamaTag": "qwen2.5-coder:14b-instruct-q4_K_M",
+      "displayName": "Qwen2.5-Coder 14B Instruct Q4_K_M",
+      "role": "coding/tool agent",
+      "estimatedWeightsGB": 9.0,
+      "numCtx": 24576,
+      "temperature": 0.2,
+      "keepAlive": "10m",
+      "toolCalling": true
+    },
+    "reasoning": {
+      "ollamaTag": "deepseek-r1:14b-qwen-distill-q4_K_M",
+      "displayName": "DeepSeek-R1 Distill Qwen 14B Q4_K_M",
+      "role": "reasoning/reviewer",
+      "estimatedWeightsGB": 9.0,
+      "numCtx": 12288,
+      "temperature": 0.35,
+      "keepAlive": "3m",
+      "toolCalling": false
+    },
+    "embedding": {
+      "ollamaTag": "embeddinggemma:latest",
+      "displayName": "EmbeddingGemma",
+      "role": "embeddings",
+      "estimatedWeightsGB": 0.4,
+      "numCtx": 2048,
+      "temperature": 0.0,
+      "keepAlive": "5m",
+      "toolCalling": false
+    }
+  },
+  "profiles": {
+    "temporalFriendly": {
+      "dockerMemoryGB": 20,
+      "dockerProcessors": 8,
+      "dockerSwapGB": 8,
+      "default": true
+    },
+    "aiOnly": {
+      "dockerMemoryGB": 28,
+      "dockerProcessors": 12,
+      "dockerSwapGB": 8,
+      "default": false
+    }
+  }
+}
