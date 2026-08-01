@@ -1,12 +1,13 @@
-param([switch]$RemoveImages,[switch]$Force,[switch]$Elevated)
+param([switch]$RemoveImages,[switch]$Force,[switch]$Elevated,[switch]$WizardChild)
 $scriptRoot = $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($scriptRoot)) { try { $scriptRoot = Split-Path -Parent ([Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) } catch { } }
 if ([string]::IsNullOrWhiteSpace($scriptRoot)) { $scriptRoot = (Get-Location).Path }
+if(-not$WizardChild -and -not$Elevated){& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $scriptRoot 'scripts\LifecycleWizard.ps1') -Operation Remove;exit $LASTEXITCODE}
 if ([string]::IsNullOrWhiteSpace($scriptRoot)) { throw 'Cannot determine the installed DSAlgo Local AI Setup directory.' }
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   $hostExe = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
   $isPowerShellHost = [IO.Path]::GetFileName($hostExe) -match '^(powershell|pwsh)(\.exe)?$'
-  $forward = @('-Elevated'); if($RemoveImages){$forward+='-RemoveImages'}; if($Force){$forward+='-Force'}
+  $forward = @('-Elevated','-WizardChild'); if($RemoveImages){$forward+='-RemoveImages'}; if($Force){$forward+='-Force'}
   $arguments = if ($isPowerShellHost) { @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$(Join-Path $scriptRoot 'Remove.ps1')`"") + $forward } else { $forward }
   $elevatedProcess = Start-Process -FilePath $hostExe -Verb RunAs -ArgumentList $arguments -PassThru
   $elevatedProcess.WaitForExit(); $elevatedProcess.Refresh()

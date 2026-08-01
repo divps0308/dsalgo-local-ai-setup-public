@@ -27,7 +27,7 @@ VALID_MODES = {"online","restricted-online","strict-offline"}
 def load_policy():
     default={"schemaVersion":1,"mode":"online","revision":1,"updatedAt":None}
     try:
-        value=json.loads(POLICY.read_text(encoding="utf-8"))
+        value=json.loads(POLICY.read_text(encoding="utf-8-sig"))
         return {**default,**value} if value.get("mode") in VALID_MODES else default
     except Exception: return default
 
@@ -39,7 +39,7 @@ def save_policy(mode, revision=None):
     tmp=POLICY.with_name(f"{POLICY.name}.{uuid.uuid4().hex}.tmp");tmp.write_text(json.dumps(value,indent=2),encoding="utf-8");tmp.replace(POLICY);return value
 
 def load():
-    try: return json.loads(CONFIG.read_text(encoding="utf-8"))
+    try: return json.loads(CONFIG.read_text(encoding="utf-8-sig"))
     except Exception: return DEFAULT.copy()
 
 def save(data):
@@ -52,7 +52,7 @@ def valid_id(value):
 def broker_request(method: str, path: str):
     if not OAUTH_BROKER_TOKEN_FILE.is_file():
         raise HTTPException(503, "The native MCP OAuth broker is not running")
-    token=OAUTH_BROKER_TOKEN_FILE.read_text(encoding="utf-8").strip()
+    token=OAUTH_BROKER_TOKEN_FILE.read_text(encoding="utf-8-sig").strip()
     try:
         r=httpx.request(method,f"{OAUTH_BROKER}{path}",headers={"X-OAuth-Broker-Token":token},timeout=40)
         value=r.json()
@@ -74,13 +74,27 @@ def home(): return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Contr
 def logo(): return FileResponse(STATIC_DIR / "logo.png", media_type="image/png", headers={"Cache-Control":"public, max-age=3600"})
 @app.get("/favicon.ico", response_class=FileResponse)
 def favicon(): return FileResponse(STATIC_DIR / "favicon.ico", media_type="image/x-icon", headers={"Cache-Control":"no-store, max-age=0"})
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://host.docker.internal:11434").rstrip("/")
+
 @app.get("/api/config")
 def get_config():
     try:
-        registry=json.loads(REGISTRY.read_text(encoding="utf-8")).get("models", {})
-        installed=[{"tag":str(v.get("ollamaTag","")),"role":k} for k,v in registry.items() if v.get("ollamaTag")]
+        registry=json.loads(REGISTRY.read_text(encoding="utf-8-sig")).get("models", {})
+        installed=[{"tag":str(v.get("ollamaTag","")),"role":k,"displayName":str(v.get("displayName",""))} for k,v in registry.items() if v.get("ollamaTag")]
     except Exception:
         installed=[]
+    # Fetch all locally installed Ollama models and merge with registry
+    try:
+        r=httpx.get(f"{OLLAMA_URL}/api/tags",timeout=5)
+        if r.is_success:
+            ollama_models=r.json().get("models",[])
+            registry_tags={m["tag"] for m in installed}
+            for om in ollama_models:
+                tag=str(om.get("name","") or om.get("model",""))
+                if tag and tag not in registry_tags:
+                    installed.append({"tag":tag,"role":"","displayName":tag})
+    except Exception:
+        pass
     return {**load(), "builtinTools": BUILTIN_TOOLS, "models": installed, "modelRoles": MODEL_ROLES}
 @app.put("/api/config")
 def put_config(payload: Payload):
@@ -101,9 +115,10 @@ def put_config(payload: Payload):
         if a.get('role', a.get('modelRole')) not in MODEL_ROLES: raise HTTPException(400, f"Unsupported agent role for {a['id']}")
         if a.get('modelTag') and not re.fullmatch(r"[A-Za-z0-9._:-]{1,200}", str(a['modelTag'])): raise HTTPException(400, f"Invalid model tag for {a['id']}")
         source=a.get("source","user"); prefix="my-custom-" if source=="user" else "my-"
-        if source not in {"setup","user"} or not a["id"].startswith(prefix): raise HTTPException(400,f"Agent id must start with {prefix}")
+        if source not in {"setup","user"}: raise HTTPException(400,f"Unsupported agent source for {a['id']}")
+        if source=="user" and not a["id"].startswith("my-custom-"): raise HTTPException(400,"Agent id must start with my-custom-")
         name_prefix="My Custom — " if source=="user" else "My "
-        if not str(a.get("name","")).startswith(name_prefix): raise HTTPException(400,f"Agent name must start with {name_prefix}")
+        if source=="user" and not str(a.get("name","")).startswith(("My Custom ","My Custom - ")): raise HTTPException(400,"Agent name must start with My Custom")
     save({"mcpServers":data.get('mcpServers',[]),"agents":data.get('agents',[])})
     return {"ok":True}
 @app.post("/api/mcp/test/{server_id}")

@@ -3,16 +3,27 @@ param(
   [switch]$RemoveModels,
   [switch]$RemoveWindowsFeatures,
   [switch]$Force,
-  [switch]$Elevated
+  [switch]$Elevated,
+  [switch]$WizardChild
 )
 $scriptRoot = $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($scriptRoot)) { try { $scriptRoot = Split-Path -Parent ([Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) } catch { } }
 if ([string]::IsNullOrWhiteSpace($scriptRoot)) { $scriptRoot = (Get-Location).Path }
+if(-not$WizardChild -and -not$Elevated){& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $scriptRoot 'scripts\LifecycleWizard.ps1') -Operation Uninstall;exit $LASTEXITCODE}
 if ([string]::IsNullOrWhiteSpace($scriptRoot)) { throw 'Cannot determine the installed DSAlgo Local AI Setup directory.' }
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+  # Native Workbench/OAuth processes belong to the interactive user. Stop them
+  # before elevation so their user-owned PID files and process handles remain
+  # available; the elevated phase then handles Docker and machine cleanup.
+  foreach($nativeStop in @('Stop-DeveloperWorkbench.ps1','Stop-OAuthBroker.ps1')) {
+    $nativePath=Join-Path $scriptRoot $nativeStop
+    if(Test-Path -LiteralPath $nativePath){
+      try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $nativePath } catch { Write-Warning "Could not stop $nativeStop before elevation: $($_.Exception.Message)" }
+    }
+  }
   $hostExe = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
   $isPowerShellHost = [IO.Path]::GetFileName($hostExe) -match '^(powershell|pwsh)(\.exe)?$'
-  $forward = @('-Elevated')
+  $forward = @('-Elevated','-WizardChild')
   if($RemoveData){$forward+='-RemoveData'}; if($RemoveModels){$forward+='-RemoveModels'}
   if($RemoveWindowsFeatures){$forward+='-RemoveWindowsFeatures'}; if($Force){$forward+='-Force'}
   $arguments = if ($isPowerShellHost) { @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$(Join-Path $scriptRoot 'Uninstall.ps1')`"") + $forward } else { $forward }
@@ -33,6 +44,16 @@ if(-not$Force){
   if($answer-ne'UNINSTALL'){Write-Host 'Cancelled.';exit 1}
 }
 $state=Get-InstallState
+# Docker Compose cleanup requires a running Docker engine. Start Docker
+# Desktop when it is installed but not currently running, then wait for the
+# engine before attempting container/image removal.
+if(Test-DockerAvailable){
+  $dockerDesktop=Join-Path ${env:ProgramFiles} 'Docker\Docker\Docker Desktop.exe'
+  if(-not (Get-Process -Name 'Docker Desktop' -ErrorAction SilentlyContinue)){
+    if(Test-Path -LiteralPath $dockerDesktop){Start-Process -FilePath $dockerDesktop -WindowStyle Hidden}
+  }
+  try { Wait-Docker } catch { Write-Warning "Docker Desktop was not ready; container cleanup will be skipped: $($_.Exception.Message)" }
+}
 & (Get-Command powershell.exe).Source -NoProfile -ExecutionPolicy Bypass -File (Join-Path $scriptRoot 'Stop-DeveloperWorkbench.ps1')
 & (Get-Command powershell.exe).Source -NoProfile -ExecutionPolicy Bypass -File (Join-Path $scriptRoot 'Stop-OAuthBroker.ps1')
 if(Test-DockerAvailable){

@@ -94,7 +94,7 @@ $hardwareConfirm=New-Object Windows.Forms.CheckBox;$hardwareConfirm.Text='I have
 $useCase=New-Object Windows.Forms.ComboBox;$useCase.DropDownStyle='DropDownList';[void]$useCase.Items.AddRange(@('General Conversation (Chat)','Reasoning','Coding','Deep Research','All'));$useCase.SelectedIndex=0
 $allocation=New-Object Windows.Forms.ComboBox;$allocation.DropDownStyle='DropDownList';[void]$allocation.Items.AddRange(@('Comfortable','Aggressive'));$allocation.SelectedIndex=0
 $prefMode=New-Object Windows.Forms.ComboBox;$prefMode.DropDownStyle='DropDownList';[void]$prefMode.Items.AddRange(@('None','Prefer','Avoid','Require'));$prefMode.SelectedIndex=0
-$vendor=New-Object Windows.Forms.ComboBox;$vendor.DropDownStyle='DropDownList';[void]$vendor.Items.AddRange(@('Any','Alibaba','Cohere','DeepSeek','Google','IBM','Meta','Microsoft','MistralAI'));$vendor.SelectedIndex=0
+$vendor=New-Object Windows.Forms.ComboBox;$vendor.DropDownStyle='DropDownList';[void]$vendor.Items.AddRange(@('Any','Alibaba','Cohere','DeepSeek','Google','IBM','Meta','Microsoft','MistralAI','Moonshot','NVIDIA','THUDM'));$vendor.SelectedIndex=0
 $country=New-Object Windows.Forms.ComboBox;$country.DropDownStyle='DropDownList';[void]$country.Items.AddRange(@('Any','Canada','China','France','UnitedStates'));$country.SelectedIndex=0
 $provenanceNote=New-Object Windows.Forms.Label;$provenanceNote.Size=New-Object Drawing.Size(520,35);$provenanceNote.ForeColor=[Drawing.Color]::DimGray
 $recommendGrid=New-Object Windows.Forms.DataGridView
@@ -149,6 +149,21 @@ function Show-Page {
     2{
       $title.Text='Select model preferences'
       Add-Row 'Primary use case' $useCase 5;Add-Row 'Resource allocation' $allocation 50
+      $script:allocDesc=New-Object Windows.Forms.Label
+      $script:allocDesc.Location=New-Object Drawing.Point(200,78)
+      $script:allocDesc.Size=New-Object Drawing.Size(510,20)
+      $script:allocDesc.ForeColor=[Drawing.Color]::DimGray
+      $script:allocDesc.Font=New-Object Drawing.Font('Segoe UI',8.5)
+      $content.Controls.Add($script:allocDesc)
+      $updateAllocDesc={
+        $script:allocDesc.Text=if($allocation.SelectedItem-eq'Comfortable'){
+          'Reserves ~35% RAM and ~20% VRAM for Windows, Docker, IDEs, and browsers.'
+        }else{
+          'Uses up to ~85% RAM and ~90% VRAM. Leaves less headroom for other apps.'
+        }
+      }
+      &$updateAllocDesc
+      $allocation.add_SelectedIndexChanged($updateAllocDesc)
       $runtimeLabel=New-Object Windows.Forms.Label;$runtimeLabel.Text='Runtime';$runtimeLabel.Location=New-Object Drawing.Point(5,100);$runtimeLabel.Size=New-Object Drawing.Size(190,24)
       $runtimeValue=New-Object Windows.Forms.Label;$runtimeValue.Text='Ollama (local)';$runtimeValue.Font=New-Object Drawing.Font('Segoe UI',10,[Drawing.FontStyle]::Bold);$runtimeValue.Location=New-Object Drawing.Point(200,100);$runtimeValue.Size=New-Object Drawing.Size(300,24)
       $runtimeHelp=New-Object Windows.Forms.Label;$runtimeHelp.Text='Recommendations are generated for local Ollama models only.';$runtimeHelp.Location=New-Object Drawing.Point(200,124);$runtimeHelp.Size=New-Object Drawing.Size(480,24);$runtimeHelp.ForeColor=[Drawing.Color]::DimGray
@@ -225,9 +240,9 @@ function Start-Installation {
   };profiles=[ordered]@{core=[ordered]@{dockerMemoryGB=20;dockerProcessors=8;dockerSwapGB=8;default=$true}}}
   $modelConfig|ConvertTo-Json -Depth 8|Set-Content (Join-Path $target 'config\models.json') -Encoding UTF8
   $agents=[ordered]@{mcpServers=@();agents=@(
-    [ordered]@{id='sample-general';name='Sample General Conversation Agent';source='setup';modelRole='general';maxSteps=6;instructions='Provide helpful, accurate general conversation and everyday assistance.';enabled=$true;builtinTools=@('calculate','get_datetime');mcpServers=@()},
-    [ordered]@{id='sample-coding';name='Sample Coding Agent';source='setup';modelRole='coder';maxSteps=8;instructions='Help with local software development, debugging, tests, and code review.';enabled=$true;builtinTools=@('workspace_list','workspace_read','workspace_search','workspace_write','run_command');mcpServers=@()},
-    [ordered]@{id='sample-research';name='Sample Deep Research Agent';source='setup';modelRole='reasoning';maxSteps=8;instructions='Analyze supplied local sources carefully, compare evidence, and report uncertainty.';enabled=$true;builtinTools=@('workspace_list','workspace_read','workspace_search');mcpServers=@()}
+    [ordered]@{id='sample-general';name='Sample General Conversation Agent';source='setup';modelRole='general';modelTag=$general[0].Tag;maxSteps=6;instructions='Provide helpful, accurate general conversation and everyday assistance.';enabled=$true;builtinTools=@('calculate','get_datetime');mcpServers=@()},
+    [ordered]@{id='sample-coding';name='Sample Coding Agent';source='setup';modelRole='coder';modelTag=$coder[0].Tag;maxSteps=8;instructions='Help with local software development, debugging, tests, and code review.';enabled=$true;builtinTools=@('workspace_list','workspace_read','workspace_search','workspace_write','run_command');mcpServers=@()},
+    [ordered]@{id='sample-research';name='Sample Deep Research Agent';source='setup';modelRole='reasoning';modelTag=$reasoning[0].Tag;maxSteps=8;instructions='Analyze supplied local sources carefully, compare evidence, and report uncertainty.';enabled=$true;builtinTools=@('workspace_list','workspace_read','workspace_search');mcpServers=@()}
   )}
   $agents|ConvertTo-Json -Depth 8|Set-Content (Join-Path $target 'config\agents.json') -Encoding UTF8
   $runtime=Join-Path $target 'runtime';New-Item -ItemType Directory -Force -Path $runtime|Out-Null

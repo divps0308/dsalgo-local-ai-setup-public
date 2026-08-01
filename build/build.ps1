@@ -38,6 +38,24 @@ if (-not (Get-Command Invoke-ps2exe -ErrorAction SilentlyContinue)) {
     throw 'PS2EXE was imported but Invoke-ps2exe is unavailable. Existing release artifacts were not changed.'
 }
 
+# Always regenerate the browser bundles before packaging. Copying previously
+# generated static assets can otherwise ship an older UI even when the Svelte
+# source has changed.
+$frontendManifest = Join-Path $repoRoot 'frontend\package.json'
+if (-not (Test-Path -LiteralPath $frontendManifest)) { throw "Frontend manifest was not found: $frontendManifest" }
+$pnpm = Get-Command pnpm.cmd -ErrorAction SilentlyContinue
+if (-not $pnpm) { $pnpm = Get-Command pnpm -ErrorAction SilentlyContinue }
+$node = Get-Command node.exe -ErrorAction SilentlyContinue
+if (-not $node) { $node = Get-Command node -ErrorAction SilentlyContinue }
+if (-not $node) { throw 'Node.js is required for the release build. Install Node.js (or select it with nvm) and reopen PowerShell.' }
+if (-not $pnpm) { throw 'pnpm is required for the release build. Install it with: npm install --global pnpm' }
+Push-Location $repoRoot
+try {
+    Write-Host 'Building frontend bundles: pnpm --dir frontend build'
+    & $pnpm.Source --dir frontend build
+    if ($LASTEXITCODE -ne 0) { throw "Frontend build failed with exit code $LASTEXITCODE." }
+} finally { Pop-Location }
+
 # Do not remove the last usable release until all required build tooling has
 # loaded successfully.
 $generatedNames = @('install','start','stop','repair','remove','uninstall')

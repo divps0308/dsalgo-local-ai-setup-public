@@ -38,7 +38,7 @@ VALID_MODES = {"online", "restricted-online", "strict-offline"}
 def runtime_policy() -> dict[str, Any]:
     default = {"schemaVersion": 1, "mode": "online", "revision": 1, "updatedAt": None}
     try:
-        value = json.loads(POLICY_FILE.read_text(encoding="utf-8"))
+        value = json.loads(POLICY_FILE.read_text(encoding="utf-8-sig"))
         if value.get("mode") in VALID_MODES:
             return {**default, **value}
     except Exception:
@@ -47,7 +47,7 @@ def runtime_policy() -> dict[str, Any]:
 
 def load_model_registry() -> dict[str, Any]:
     try:
-        return json.loads(MODEL_REGISTRY_FILE.read_text(encoding="utf-8"))
+        return json.loads(MODEL_REGISTRY_FILE.read_text(encoding="utf-8-sig"))
     except Exception as exc:
         raise RuntimeError(f"Unable to load model registry {MODEL_REGISTRY_FILE}: {exc}")
 
@@ -55,7 +55,7 @@ def load_model_registry() -> dict[str, Any]:
 def load_secrets() -> dict[str, str]:
     try:
         if SECRET_FILE.exists():
-            value = json.loads(SECRET_FILE.read_text(encoding="utf-8"))
+            value = json.loads(SECRET_FILE.read_text(encoding="utf-8-sig"))
             return {str(k): str(v) for k, v in value.items()}
     except Exception:
         pass
@@ -311,7 +311,7 @@ def load_dynamic_config() -> dict[str, Any]:
     default = {"mcpServers": [], "agents": []}
     try:
         if CONFIG_FILE.is_file():
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
             if isinstance(data, dict):
                 return {"mcpServers": data.get("mcpServers", []), "agents": data.get("agents", [])}
     except Exception:
@@ -352,7 +352,7 @@ def _mcp_headers(server: dict[str, Any], session_id: str | None = None) -> dict[
     if isinstance(authentication, dict) and authentication.get("type") == "oauth":
         if not OAUTH_BROKER_TOKEN_FILE.is_file():
             raise RuntimeError("The native MCP OAuth broker is not running")
-        broker_token = OAUTH_BROKER_TOKEN_FILE.read_text(encoding="utf-8").strip()
+        broker_token = OAUTH_BROKER_TOKEN_FILE.read_text(encoding="utf-8-sig").strip()
         server_id = str(server.get("id", ""))
         if not server_id:
             raise RuntimeError("OAuth MCP server is missing its id")
@@ -464,6 +464,9 @@ def invoke_tool(name: str, arguments: Any, allowed: set[str], mcp_mapping: dict[
 
 def ollama_chat(model: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None, temperature: float | None = None) -> dict[str, Any]:
     model_cfg = next((v for v in load_model_registry().get("models", {}).values() if v.get("ollamaTag") == model), {})
+    # Only send tools if the model is explicitly configured to support tool-calling
+    tool_capable = bool(model_cfg.get("toolCalling", True))
+    effective_tools = tools if (tools and tool_capable) else None
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -472,11 +475,20 @@ def ollama_chat(model: str, messages: list[dict[str, Any]], tools: list[dict[str
         "options": {"num_ctx": int(model_cfg.get("numCtx", 16384))},
     }
     if temperature is not None: payload["options"]["temperature"] = temperature
-    if tools: payload["tools"] = tools
+    if effective_tools: payload["tools"] = effective_tools
     with httpx.Client(timeout=900) as client:
-        response = client.post(f"{OLLAMA_URL}/api/chat", json=payload)
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = client.post(f"{OLLAMA_URL}/api/chat", json=payload)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as exc:
+            # Retry without tools if model rejected tool-calling (e.g. "does not support tools")
+            if effective_tools and exc.response.status_code in (400, 422):
+                payload.pop("tools", None)
+                retry = client.post(f"{OLLAMA_URL}/api/chat", json=payload)
+                retry.raise_for_status()
+                return retry.json()
+            raise
 
 
 def run_agent(profile: str, incoming: list[dict[str, Any]], extra_system: str = "", temperature: float | None = None) -> tuple[str, list[dict[str, Any]]]:

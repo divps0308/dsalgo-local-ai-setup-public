@@ -535,6 +535,18 @@ pnpm --dir frontend check
 pnpm --dir frontend build
 ```
 
+The release packaging command runs this frontend build automatically before
+copying assets into `dist/payload`; do not package stale generated bundles.
+Release builds require Node.js and pnpm to be available on `PATH` (for nvm,
+select the desired Node version before opening PowerShell). Run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build\build.ps1
+```
+
+The script fails before replacing release artifacts when Node.js or pnpm is
+missing, or when the frontend build fails.
+
 The build must update both:
 
 - `agent-studio/static/`

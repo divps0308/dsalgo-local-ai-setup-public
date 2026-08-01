@@ -163,7 +163,8 @@ Use Windows PowerShell 5.1 or PowerShell 7:
 powershell -ExecutionPolicy Bypass -File .\build\build.ps1
 ```
 
-The build installs PS2EXE for the current user if needed, packages and signs
+The build automatically runs `pnpm --dir frontend build`, then installs PS2EXE
+for the current user if needed, packages and signs
 the GUI installer and lifecycle executables, and writes checksums and
 verification instructions to `dist`. The certificate is self-signed and not
 publicly trusted; SmartScreen or Unknown Publisher warnings are expected.

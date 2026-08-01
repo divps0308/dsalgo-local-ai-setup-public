@@ -1,5 +1,25 @@
 # Limitations and To-Do Register
 
+- Validate lifecycle wizard progress streaming and cancellation across
+  elevated and non-elevated operation paths.
+
+- Consolidate lifecycle operations into a shared single-window progress wizard
+  with Next/Cancel navigation and captured stdout/stderr.
+
+- Validate new-window/tab behavior across supported default browsers and
+  Windows browser policies.
+
+- Validate bounded native child-script startup under Python/PowerShell
+  combinations; lifecycle launchers now fail with logs instead of waiting
+  indefinitely.
+
+- Validate bounded elevated Start-phase behavior across Docker Desktop update
+  states; startup now records phase progress in `runtime/start.log`.
+
+- Validate elevated installation ACLs when the interactive Windows account
+  differs from the Administrator account; native Workbench and OAuth must be
+  able to write runtime state as the signed-in user.
+
 ## Current release-readiness caveats
 
 - The installer is deterministic and performs no AI inference during hardware
@@ -302,6 +322,9 @@ resolution in `CHANGELOG.md` and any resulting decision in `decision-log.md`.
 ### Open WebUI, models, and Agent Gateway
 
 - Raw Ollama models do not gain agent tools merely by being selected.
+- **Known**: If the Docker gateway container cannot reach Ollama at `host.docker.internal:11434`, the Built-in General Agent will return no response (empty spinner). Verify `ollama serve` is running natively before using gateway agents.
+- **Known**: Kimi-VL `kimi-vl-a3b-thinking:latest` is listed in the catalog with `provenanceConfidence: medium`; verify tag availability on Ollama before pulling.
+- model-catalog.json `organization` field for new entries (THUDM, NVIDIA, Moonshot) must match the `$vendor` dropdown strings in `InstallerWizard.ps1` exactly for provenance filtering to work; keep both lists synchronized on catalog updates.
 - Open WebUI Workspace presets are separate from installed Ollama models and
   gateway agents; installed models do not automatically appear as editable
   Workspace presets.
@@ -428,4 +451,15 @@ resolution in `CHANGELOG.md` and any resulting decision in `decision-log.md`.
 - [x] Developer Workbench did not start when launched via `Invoke-ChildScript` in `Start.ps1` because `Start-DeveloperWorkbench.ps1` used raw `$PSScriptRoot` which can be empty in child PowerShell processes; fixed with the same three-source root-resolution pattern used in `Start.ps1` and `Uninstall.ps1`. Same fix applied to `Start-OAuthBroker.ps1` for consistency.
 - [x] Browser open in `Start.ps1` used `rundll32 url.dll,FileProtocolHandler` which opens each URL in a separate browser window; replaced with `Start-Process -FilePath $url` (ShellExecute) so modern browsers open URLs as tabs in the existing window.
 - [x] `Register-DSAlgoUninstall` in `scripts/Shortcuts.ps1` did not set `DisplayIcon` so no logo appeared in Settings > Apps or Control Panel. Added `DisplayIcon`, `QuietUninstallString`, `NoModify`, and `NoRepair` properties. Existing registry entry was patched in place.
+# Latest validation follow-up
 
+- Validate lifecycle startup from a clean, non-elevated installed copy after
+  repairing runtime-directory permissions; stale Workbench PID files and
+  elevated-owned state files can prevent port 3002 from binding.
+### Developer Workbench agent assignment
+
+- Validate the agent-picker workflow across sample and custom agents, including
+  disabled agents, missing model tags, and stale installed configuration.
+- Rebuild and package the Workbench static bundle after agent selection changes.
+- [ ] Workbench task quality: validate model completion evidence and preserve an explicit incomplete state when a model stops after proposals or failed commands; validate multilingual/UTF-8 tool output across Windows encodings.
+- [ ] Workbench modes: validate Ask (read/answer), Plan (read-only plan artifact), and Goal (approval-gated execution) across the packaged UI and installed payload.

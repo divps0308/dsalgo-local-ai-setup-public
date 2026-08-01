@@ -2,7 +2,41 @@
 
 ## Unreleased
 
-- Fixed Developer Workbench not starting when launched via `Start.ps1`: `Start-DeveloperWorkbench.ps1` and `Start-OAuthBroker.ps1` now use the same three-source root-resolution pattern as `Start.ps1` so they work correctly when `$PSScriptRoot` is empty inside a child PowerShell process.
+- Added a shared single-window lifecycle wizard for Start, Stop, Repair,
+  Remove, and Uninstall with Next/Cancel controls and captured child output.
+
+- Added a shared single-window lifecycle wizard for Start, Stop, Repair,
+  Remove, and Uninstall with Next/Cancel controls and captured child output.
+
+- Uninstall now starts Docker Desktop when needed and waits for Docker
+  readiness before attempting container/image cleanup.
+
+- Uninstall now starts Docker Desktop when needed and waits for Docker
+  readiness before attempting container/image cleanup.
+
+- Improved Start browser launch by detecting an installed browser executable
+  and requesting a new window containing the three local interfaces.
+
+- Improved Start browser launch by detecting an installed browser executable
+  and requesting a new window containing the three local interfaces.
+
+- Replaced the unbounded native child-script invocation in Start with a
+  bounded process runner and actionable stdout/stderr diagnostics.
+
+- Added bounded elevated startup waiting and `runtime/start.log` phase
+  diagnostics so `start.exe` cannot remain indefinitely blocked before native
+  services and browser launch.
+
+- Fixed elevated installation runtime permissions to target the interactive
+  desktop user rather than the temporary Administrator account.
+
+- Fixed `start.exe` crashing with `RedirectStandardInput` error: removed `-RedirectStandardInput NUL` from `Start-DeveloperWorkbench.ps1` and `Start-OAuthBroker.ps1`. In PS2EXE-compiled mode `NUL` is resolved as a relative path rather than the Windows null device. `pythonw.exe` is already detached from the console so the redirect is unnecessary.
+- Fixed browser tabs not opening after `start.exe`: replaced `Start-Process -FilePath $url` with `System.Diagnostics.ProcessStartInfo` + `Process.Start()` which calls `ShellExecute` directly and works reliably inside PS2EXE-hosted processes. Added a 600 ms inter-tab delay so each URL opens in a new tab rather than a new window.
+- Fixed `gemma3:27b does not support tools` error in Open WebUI: gateway's `ollama_chat()` now respects `toolCalling: false` from `models.json` and skips sending tool definitions to Ollama for non-tool-capable models. Added a graceful 400-error retry without tools as a belt-and-suspenders fallback.
+- Fixed Local Agent Studio "Backing LLM model" dropdown showing no models: `agent-studio/app.py /api/config` now fetches the Ollama `/api/tags` list and merges all installed models with the registry entries, ensuring every locally available model appears in the dropdown.
+- Added inline resource allocation description in the installer wizard: a dynamic label below the Resource Allocation ComboBox updates in real time to explain the RAM/VRAM impact of each choice.
+- Expanded `model-catalog.json` with 9 new entries across 4 new families: **GLM4** (THUDM/ZhipuAI, China — `glm4:9b`), **Nemotron Mini** (NVIDIA, US — `nemotron-mini:4b`), **Qwen3** (Alibaba, China — 0.5B through 32B), and **Kimi-VL** (Moonshot AI, China — `kimi-vl-a3b-thinking`). Bumped `catalogVersion` to `2026.07.31.1`. Added Moonshot, NVIDIA, and THUDM to the installer's Preferred Organization dropdown.
+
 - Fixed `Start.ps1` browser launch opening separate browser windows instead of tabs: replaced `rundll32 url.dll,FileProtocolHandler` with `Start-Process -FilePath $url` (ShellExecute) so modern browsers open all three URLs as tabs in the existing window. Added a 2-second settle wait after native services start before opening the browser.
 - Fixed missing icon in Settings > Apps / Control Panel uninstall entry: `Register-DSAlgoUninstall` in `scripts/Shortcuts.ps1` now writes `DisplayIcon` pointing to `assets/branding/logo.ico`, plus `QuietUninstallString`, `NoModify`, and `NoRepair` for full Windows uninstaller conformance. Existing registry entry was patched in place.
 
@@ -223,3 +257,7 @@
 - Excluded secrets and `.env` from standard backups.
 - Added General, Coding, Reasoning, QA, Python, Java, and Architecture agents.
 - Preserved Open WebUI, Agent Studio, dynamic MCP management, orchestration, persistence, backup/restore, and optional data services.
+# Unreleased
+
+- Hardened Developer Workbench startup against elevated-owned runtime files
+  and stale PID metadata so normal-user startup can bind port 3002 reliably.
