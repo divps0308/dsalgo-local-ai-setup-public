@@ -560,6 +560,19 @@ is unavailable.
 Agent Studio custom agents expose two separate choices: an installed Ollama
 model tag (`modelTag`) and a preferred-use role (General Conversation (Chat),
 Reasoning, Coding, Deep Research, or All). The gateway uses the selected tag
-when present and retains role-based fallback for older configurations. This
-keeps the UI truthful about the backing LLM while preserving compatibility
-with existing agents.
+when present. Tasks must select an enabled agent with a resolvable backing
+model; role-only task execution is not supported.
+
+### D-044 Workbench task agent selection
+
+Workbench tasks now select an enabled sample or custom agent by stable ID. The
+backend resolves its configured backing model tag deterministically and retains
+without role fallback. This aligns task execution with Local Agent Studio
+configuration without weakening approval gates.
+### D-045 — Workbench completion evidence and UTF-8 tool output (2026-08-01)
+
+Workbench task results require a recorded write action, successful command/test result, or explicit no-change conclusion before status `completed`; otherwise they are marked `incomplete`. Project file reads repair clear UTF-8-as-Latin-1 mojibake without altering correctly encoded content.
+
+### D-046 — Explicit Workbench work modes (2026-08-01)
+
+Ask and Plan modes expose only read/search tools; Goal retains the existing approval-gated write and command workflow. Plan artifacts are saved by the Workbench under `.workbench-plans` only after an explicit approval, with timestamped unique names.

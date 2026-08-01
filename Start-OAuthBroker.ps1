@@ -26,7 +26,7 @@ if(Test-OAuthBroker){
 }
 if(Test-Path $pidFile){Remove-Item -LiteralPath $pidFile -Force}
 $app=Join-Path $Root 'oauth-broker\app.py'
-$process=Start-Process -FilePath $python -ArgumentList @("`"$app`"",'--port',"$port") -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile -RedirectStandardInput NUL
+$process=Start-Process -FilePath $python -ArgumentList @("`"$app`"",'--port',"$port") -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
 @{
   pid=$process.Id
   executable=$python

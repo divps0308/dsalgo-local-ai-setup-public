@@ -30,12 +30,15 @@ TASKS_FILE = RUNTIME_DIR / "tasks.json"
 TOKEN_FILE = RUNTIME_DIR / "token"
 LOG_FILE = ROOT / "logs" / "developer-workbench.log"
 MODELS_FILE = CONFIG_DIR / "models.json"
+AGENTS_FILE = CONFIG_DIR / "agents.json"
 POLICY_FILE = CONFIG_DIR / "runtime-policy.json"
 MAX_READ_BYTES = 5_000_000
 MAX_OUTPUT = 100_000
 MAX_AGENT_STEPS = 30
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 VALID_MODES = {"online", "restricted-online", "strict-offline"}
+WORK_MODES = {"ask", "plan", "goal"}
+READ_ONLY_TOOL_NAMES = {"list_files", "read_file", "search_files", "git_status", "git_diff"}
 
 def load_policy() -> dict[str, Any]:
     default = {"schemaVersion": 1, "mode": "online", "revision": 1, "updatedAt": None}
@@ -198,7 +201,16 @@ def read_text(path: Path) -> str:
         raise ValueError("File not found")
     if path.stat().st_size > MAX_READ_BYTES:
         raise ValueError("File exceeds the 5 MB read limit")
-    return path.read_text(encoding="utf-8", errors="replace")
+    text = path.read_text(encoding="utf-8", errors="replace")
+    markers = ("Ã", "Â", "â", "ä", "å", "ç")
+    if any(marker in text for marker in markers):
+        try:
+            repaired = text.encode("latin-1").decode("utf-8")
+            if sum(text.count(marker) for marker in markers) > sum(repaired.count(marker) for marker in markers):
+                return repaired
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            pass
+    return text
 
 
 def unified_patch(relative: str, before: str, after: str) -> str:
@@ -332,11 +344,64 @@ def model_for_role(role: str) -> tuple[str, dict[str, Any]]:
     return cfg["ollamaTag"], cfg
 
 
-def ollama_chat(model: str, cfg: dict[str, Any], messages: list[dict[str, Any]]) -> dict[str, Any]:
+def available_agents() -> list[dict[str, Any]]:
+    """Return enabled configured agents without exposing instructions or secrets."""
+    configured = load_json(AGENTS_FILE, {"agents": []}).get("agents", [])
+    result: list[dict[str, Any]] = []
+    for item in configured if isinstance(configured, list) else []:
+        if not isinstance(item, dict) or not item.get("enabled", True):
+            continue
+        agent_id = str(item.get("id", "")).strip()
+        if not agent_id:
+            continue
+        result.append({
+            "id": agent_id,
+            "name": str(item.get("name") or item.get("displayName") or agent_id),
+            "modelTag": str(item.get("modelTag", "")).strip(),
+            "modelRole": str(item.get("modelRole") or item.get("role") or "general"),
+        })
+    return result
+
+
+def model_for_agent(agent_id: str) -> tuple[str, dict[str, Any], dict[str, Any]]:
+    """Resolve an agent to a model registry entry deterministically."""
+    agent = next((a for a in available_agents() if a["id"] == agent_id), None)
+    if not agent:
+        raise ValueError("Selected agent is not configured or is disabled")
+    registry = load_json(MODELS_FILE, {}).get("models", {})
+    tag = agent.get("modelTag", "")
+    cfg = next((value for value in registry.values() if isinstance(value, dict) and value.get("ollamaTag") == tag), None)
+    if cfg is None:
+        if not tag:
+            raise ValueError(f"Backing model is not configured for agent: {agent_id}")
+        # Custom agents may select an installed Ollama model that is not part
+        # of the curated catalog. Validate its presence, then use conservative
+        # deterministic runtime defaults rather than inferring capabilities.
+        try:
+            request = urllib.request.Request("http://127.0.0.1:11434/api/tags", method="GET")
+            with urllib.request.urlopen(request, timeout=10) as response:
+                installed = json.loads(response.read().decode("utf-8")).get("models", [])
+            names = {str(item.get("name", "")) for item in installed if isinstance(item, dict)}
+        except Exception as exc:
+            raise ValueError(f"Could not verify installed backing model '{tag}': {exc}") from exc
+        if tag not in names:
+            raise ValueError(f"Backing model is not installed in Ollama: {tag}")
+        cfg = {
+            "ollamaTag": tag,
+            "displayName": tag,
+            "numCtx": 8192,
+            "temperature": 0.2,
+            "keepAlive": "10m",
+            "toolCalling": True,
+        }
+    return str(cfg["ollamaTag"]), cfg, agent
+
+
+def ollama_chat(model: str, cfg: dict[str, Any], messages: list[dict[str, Any]], work_mode: str = "goal") -> dict[str, Any]:
     payload = {
         "model": model,
         "messages": messages,
-        "tools": TOOLS,
+        "tools": [tool for tool in TOOLS if work_mode == "goal" or tool["function"]["name"] in READ_ONLY_TOOL_NAMES],
         "stream": False,
         "keep_alive": cfg.get("keepAlive", "10m"),
         "options": {
@@ -362,6 +427,39 @@ def add_event(task_id: str, kind: str, content: Any) -> None:
         )
         task["updatedAt"] = time.time()
         STATE.persist_tasks()
+
+
+def completion_quality(task: dict[str, Any], content: str) -> tuple[bool, str]:
+    """Require evidence that a task actually finished or explicitly needed no change."""
+    events = task.get("events", [])
+    if any(event.get("kind") == "action" for event in events):
+        return True, ""
+    for event in events:
+        if event.get("kind") == "command" and isinstance(event.get("content"), dict):
+            if int(event["content"].get("exitCode", -1)) == 0:
+                return True, ""
+    normalized = content.lower()
+    no_change = re.search(r"\b(no changes? (are )?needed|no changes? (were )?made|nothing (to|needed to) change)\b", normalized)
+    if no_change:
+        return True, ""
+    return False, "The model stopped without a patch, successful command/test result, or explicit no-change conclusion."
+
+
+def save_plan(project: dict[str, Any], prompt: str, content: str) -> str:
+    """Save a user-requested plan artifact under the approved project root."""
+    root = Path(project["path"]).resolve()
+    plans = root / ".workbench-plans"
+    plans.mkdir(exist_ok=True)
+    slug = re.sub(r"[^a-z0-9]+", "-", prompt.lower()).strip("-")[:60] or "implementation-plan"
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    candidate = plans / f"{stamp}-{slug}.md"
+    suffix = 2
+    while candidate.exists():
+        candidate = plans / f"{stamp}-{slug}-{suffix}.md"
+        suffix += 1
+    body = f"# Implementation plan\n\n- Generated: {time.strftime('%Y-%m-%d %H:%M:%S %z')}\n- Request: {prompt}\n\n{content.strip()}\n"
+    candidate.write_text(body, encoding="utf-8")
+    return str(candidate.relative_to(root))
 
 
 def request_approval(
@@ -425,7 +523,7 @@ def execute_tool(task_id: str, project: dict[str, Any], name: str, args: dict[st
             try:
                 if not file.is_file() or file.stat().st_size > 2_000_000:
                     continue
-                for number, line in enumerate(file.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+                for number, line in enumerate(read_text(file).splitlines(), 1):
                     if query.lower() in line.lower():
                         rows.append(f"{file.relative_to(root)}:{number}: {line[:500]}")
                         if len(rows) >= limit:
@@ -510,8 +608,11 @@ def run_agent_task(task_id: str) -> None:
             task = STATE.tasks[task_id]
             project = STATE.project(task["projectId"])
             prompt = task["prompt"]
-            role = task["modelRole"]
-        model, cfg = model_for_role(role)
+            agent_id = task.get("agentId", "")
+            work_mode = task.get("workMode", "goal")
+        if not agent_id:
+            raise ValueError("Task agent is required; select an enabled agent in Local Agent Studio")
+        model, cfg, agent = model_for_agent(agent_id)
         system = (
             "You are a local Windows coding agent operating on one user-approved project root: "
             f"{project['path']}. Inspect evidence before changing anything. Read tools run immediately. "
@@ -521,24 +622,47 @@ def run_agent_task(task_id: str) -> None:
             "or any executable. Never claim an action succeeded without its tool result. Keep changes "
             "minimal and finish with exact files changed and verification results."
         )
+        if work_mode == "ask":
+            system += " This is ASK mode: only inspect/read/search; answer the question and do not propose edits or commands."
+        elif work_mode == "plan":
+            system += " This is PLAN mode: only inspect/read/search; produce a concrete implementation plan with steps, files, risks, and verification. Do not edit files or run commands."
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ]
-        add_event(task_id, "status", f"Started with {model}")
+        add_event(task_id, "status", f"Started with {agent.get('name', agent_id)} ({model})")
         for _ in range(MAX_AGENT_STEPS):
             if STATE.cancel_events[task_id].is_set():
                 STATE.update_task(task_id, status="cancelled")
                 add_event(task_id, "status", "Task cancelled")
                 return
-            response = ollama_chat(model, cfg, messages)
+            response = ollama_chat(model, cfg, messages, work_mode)
             assistant = response.get("message", {})
             messages.append(assistant)
             calls = assistant.get("tool_calls") or []
             if not calls:
                 result = assistant.get("content", "")
                 add_event(task_id, "assistant", result)
-                STATE.update_task(task_id, status="completed", result=result)
+                if work_mode == "plan":
+                    approved, _ = request_approval(task_id, "plan", "Save generated implementation plan", {"reason": "The plan will be saved as a Markdown artifact inside the approved project."})
+                    if not approved:
+                        STATE.update_task(task_id, status="cancelled", error="Plan artifact save was rejected.", result=result)
+                        return
+                    relative = save_plan(project, prompt, result)
+                    add_event(task_id, "action", f"Saved plan {relative}")
+                    STATE.update_task(task_id, status="completed", result=result, planPath=relative)
+                    return
+                if work_mode == "ask":
+                    STATE.update_task(task_id, status="completed", result=result)
+                    return
+                with STATE.lock:
+                    current = STATE.tasks[task_id]
+                valid, reason = completion_quality(current, result)
+                if valid:
+                    STATE.update_task(task_id, status="completed", result=result)
+                else:
+                    add_event(task_id, "error", reason)
+                    STATE.update_task(task_id, status="incomplete", error=reason, result=result)
                 return
             if assistant.get("content"):
                 add_event(task_id, "assistant", assistant["content"])
@@ -560,17 +684,25 @@ def run_agent_task(task_id: str) -> None:
         STATE.update_task(task_id, status="failed", error=str(exc))
 
 
-def start_task(project_id: str, prompt: str, model_role: str) -> dict[str, Any]:
+def start_task(project_id: str, prompt: str, agent_id: str, work_mode: str = "goal") -> dict[str, Any]:
     STATE.project(project_id)
     if not prompt.strip():
         raise ValueError("Task prompt is required")
+    if work_mode not in WORK_MODES:
+        raise ValueError("Work mode must be Ask, Plan, or Goal")
     task_id = uuid.uuid4().hex
     now = time.time()
+    selected_agent = next((a for a in available_agents() if a["id"] == agent_id), None)
+    if not selected_agent:
+        raise ValueError("Selected agent is not configured or is disabled")
     task = {
         "id": task_id,
         "projectId": project_id,
         "prompt": prompt.strip(),
-        "modelRole": model_role if model_role in {"general", "coder", "reasoning"} else "coder",
+        "modelRole": selected_agent.get("modelRole", ""),
+        "agentId": agent_id,
+        "agentName": (selected_agent or {}).get("name", ""),
+        "workMode": work_mode,
         "status": "running",
         "events": [],
         "approvals": [],
@@ -690,7 +822,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", mimetypes.guess_type(requested.name)[0] or "application/octet-stream")
             self.send_header("Content-Length", str(len(payload)))
-            self.send_header("Cache-Control", "public, max-age=3600")
+            # Static bundles are replaced by installer/repair. Avoid serving
+            # an older task UI from the browser cache after an upgrade.
+            self.send_header("Cache-Control", "no-store, max-age=0")
             self.end_headers()
             self.wfile.write(payload)
             return
@@ -720,6 +854,7 @@ class Handler(BaseHTTPRequestHandler):
                             "projects": STATE.projects,
                             "tasks": [public_task(t) for t in STATE.tasks.values()],
                             "runtimePolicy": load_policy(),
+                            "agents": available_agents(),
                         }
                     )
                 return
@@ -765,7 +900,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/tasks":
                 self.send_json(
-                    start_task(str(data.get("projectId", "")), str(data.get("prompt", "")), str(data.get("modelRole", "coder"))),
+                    start_task(str(data.get("projectId", "")), str(data.get("prompt", "")), str(data.get("agentId", "")).strip(), str(data.get("workMode", "goal")).lower()),
                     HTTPStatus.CREATED,
                 )
                 return

@@ -23,7 +23,12 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $installLog)|Out-N
 # signed-in user. Grant that user modify access to generated runtime state.
 $runtimeDirectory=Split-Path -Parent $installLog
 $runtimeAcl=Get-Acl -LiteralPath $runtimeDirectory
-$runtimeUser=New-Object Security.Principal.NTAccount($env:USERDOMAIN,$env:USERNAME)
+# The installer runs elevated, so $env:USERNAME may be Administrator. Resolve
+# the interactive desktop account so native Workbench/OAuth processes can
+# write runtime state without running elevated.
+$interactiveUser=(Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue).UserName
+if([string]::IsNullOrWhiteSpace($interactiveUser)){$interactiveUser="$env:USERDOMAIN\$env:USERNAME"}
+$runtimeUser=New-Object Security.Principal.NTAccount($interactiveUser)
 $runtimeRule=New-Object Security.AccessControl.FileSystemAccessRule($runtimeUser,'Modify','ContainerInherit,ObjectInherit','None','Allow')
 $runtimeAcl.SetAccessRule($runtimeRule)
 Set-Acl -LiteralPath $runtimeDirectory -AclObject $runtimeAcl
