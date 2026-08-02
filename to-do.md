@@ -3,6 +3,10 @@
 - Validate lifecycle wizard progress streaming and cancellation across
   elevated and non-elevated operation paths.
 
+- Architectural: Review for additional obsolete compatibility entry points
+  after the first public release; this cleanup removed only root scripts with
+  no active references and retained every documented lifecycle operation.
+
 - Backend: Validate text-serialized JSON tool-call recovery across the supported
   small Ollama coding models; the compatibility path is intentionally limited
   to one exact `{name, arguments}` object and still requires normal approvals.

@@ -1,5 +1,20 @@
 # Functionality and Architecture Decision Log
 
+## D-043: Remove unreferenced legacy root wrappers
+
+- **Status:** Accepted.
+- **Decision:** Remove `context_for_codex.md` and the unreferenced root
+  `Manage-AgentStudio.ps1`, `Manage-LocalAI.ps1`, `Start-AgentStudio.ps1`,
+  `Start-LocalAI.ps1`, `Stop-AgentStudio.ps1`, `Stop-LocalAI.ps1`, and
+  `Update.ps1` wrappers. Keep the documented top-level lifecycle, backup,
+  restore, diagnostic, WSL, and secret-management commands.
+- **Rationale:** The wrappers are not called by the active installer,
+  lifecycle, build, documentation, or CI paths. Keeping parallel legacy entry
+  points increases ambiguity and maintenance risk.
+- **Consequences:** Users must use the documented `Install.ps1`, `Start.ps1`,
+  `Stop.ps1`, `Repair.ps1`, `Remove.ps1`, `Uninstall.ps1`, and supporting
+  commands. Existing scripts are not changed by this cleanup.
+
 ## D-042: Recover exact text-serialized Workbench tool requests
 
 - **Status:** Accepted.
