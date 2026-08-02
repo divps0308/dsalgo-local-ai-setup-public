@@ -37,3 +37,104 @@ This document serves as a summary of the issues reported and the solutions appli
 * **Issue:** Running `dist/install.exe` resulted in an error: `The process cannot access the file '.../start.exe' because it is being used by another process.`
 * **Root Cause:** The `start.exe` executable from a previous successful launch was still running in the background, locking the file and preventing the installer from overwriting it.
 * **Solution:** Forcefully terminated the running `start.exe` process so the installation could proceed.
+
+## 8. Public release and licensing decisions
+
+* `LICENSE` is the canonical MIT license and is displayed by the installer.
+  `mit_license.md` was removed. The installer also displays a third-party
+  notice explaining that upstream software, container images, and models keep
+  their own ownership and licenses; no ownership or responsibility is claimed.
+* The installer requires explicit license/third-party notice acceptance before
+  proceeding. License text uses normalized line endings so paragraphs and
+  headings render correctly in the WinForms text area.
+* The public project must not contain `.env`, DPAPI/token files, runtime
+  secrets, model caches, private certificates, PFX files, or personal email
+  addresses. `PUBLIC_RELEASE_GUIDE.md` is intentionally gitignored and is not
+  packaged.
+* The root tracked `start.exe` was removed; generated executables belong under
+  `dist/` only.
+* Alienware identifiers were removed from public source/configuration while
+  the legacy DPAPI entropy remains encoded for compatibility with existing
+  stored secrets. Do not change that entropy without a migration plan.
+
+## 9. Build and release workflow
+
+* `build/build.ps1` automatically runs `pnpm --dir frontend build` before
+  packaging. It generates and signs `install.exe`, `start.exe`, `stop.exe`,
+  `repair.exe`, `remove.exe`, and `uninstall.exe`, then writes checksums,
+  `VERIFY.md`, and the public `.cer` certificate.
+* Local builds may generate/use the self-signed certificate in
+  `Cert:\CurrentUser\My` with subject
+  `CN=DSAlgo Local AI Setup Local Release Signing`. A self-signed certificate
+  is not publicly trusted and is not a substitute for a CA certificate.
+* `.github/workflows/ci.yml` validates frontend/build prerequisites, JSON,
+  Python syntax, Compose configuration, PowerShell parsing, and Git safety.
+* `.github/workflows/release.yml` is owner-only (`divps0308`), uses the
+  protected GitHub `release` environment, checks out an existing semantic tag,
+  imports `SIGNING_CERT_PFX_B64` and `SIGNING_CERT_PASSWORD` only on the
+  ephemeral Windows runner, runs the normal build, publishes release assets,
+  and removes the imported certificate/PFX in `finally` cleanup.
+* The PFX private key must be stored only as GitHub environment secrets, never
+  repository secrets/variables, source files, artifacts, logs, or release
+  assets. Configure required reviewers and tag/branch restrictions on the
+  environment. Rotate the PFX and secrets immediately if exposed.
+
+## 10. Workbench and agent behavior
+
+* Developer Workbench task creation uses a selected configured agent and its
+  backing Ollama model; legacy model-role fallback is intentionally not used.
+* Work modes are `Ask` (read/answer only), `Plan` (read and save a uniquely
+  named dated Markdown plan in the project), and `Goal` (continue best-effort
+  with approval gates until completion or a real blocker).
+* Completion quality must not be inferred merely from the model ending its
+  response. A task is incomplete unless it produces a patch, command, test
+  result, or explicit “no changes needed” conclusion. Goal mode must continue
+  while actionable work remains, subject to configured max steps and safety
+  approvals.
+* The Workbench supplies approval-gated tools, but a model may emit a proposed
+  command as plain text instead of structured `tool_calls`; plain text is never
+  executed. This explains repeated installation proposals that did not create
+  approval cards.
+* The selected agent’s configured maximum tool steps is used, with a defensive
+  hard maximum of 1000. A high limit does not guarantee completion if the model
+  repeats itself, fails to emit tool calls, or reaches a safety/timeout limit.
+* Existing Chinese comments in sample projects can appear as UTF-8 mojibake in
+  output when rendered with the wrong decoder; this is not necessarily model-
+  generated content.
+
+## 11. Operational limitations and current validation
+
+* Primary validated target remains Windows 11 with WSL2, Docker Desktop,
+  native Windows Ollama, NVIDIA CUDA GPU with dedicated VRAM, sufficient RAM,
+  and disk. Linux/macOS, AMD, Intel GPU, CPU-only, Vulkan/DirectML, unknown
+  VRAM, and multi-GPU paths remain future validation work.
+* Re-running installation is intended to resume/repair and does not remove
+  previously downloaded Ollama models unless the user explicitly chooses the
+  destructive uninstall cleanup option.
+* `Start`, `Stop`, `Repair`, `Remove`, and `Uninstall` are separate lifecycle
+  operations; services, native Workbench/OAuth processes, Docker/WSL state,
+  browser launching, and cleanup require validation on the target machine.
+* The installer’s hardware/model recommendations and all model combinations
+  are not exhaustively tested for healthy installation. Downloadable does not
+  mean supported; compatible does not mean validated.
+* Strict Offline is an application policy, not a host firewall or air gap.
+  MCP/OAuth integrations can contact external providers and must remain
+  trusted, least-privilege, and localhost-oriented.
+
+## 12. Useful handoff commands
+
+```powershell
+# Build/package locally (requires Node.js and pnpm)
+powershell -ExecutionPolicy Bypass -File .\build\build.ps1
+
+# Validate the current build inputs without installing
+Get-ChildItem .\dist\*.exe
+Get-FileHash .\dist\install.exe -Algorithm SHA256
+Get-AuthenticodeSignature .\dist\install.exe
+```
+
+For a public release, use the protected GitHub Actions workflow rather than
+uploading a locally generated PFX or manually signing from a contributor
+machine. Treat this file as a continuity handoff; consult `AGENTS.md`,
+`agentic-dev-instructions.md`, `dev-guide.md`, `SECURITY.md`, and
+`docs/PROJECT_CONTEXT.md` before changing architecture or security behavior.
