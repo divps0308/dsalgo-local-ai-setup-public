@@ -68,6 +68,8 @@ New-Item -ItemType Directory -Force -Path $payloadRoot | Out-Null
 Get-ChildItem -LiteralPath $repoRoot -Force |
     Where-Object { $_.Name -notin @('.git','dist','artifacts','.env','runtime','backups','node_modules','.pnpm-store') } |
     ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $payloadRoot -Recurse -Force }
+# The frontend build output is distributable; its dependency tree is not.
+Remove-Item -LiteralPath (Join-Path $payloadRoot 'frontend\node_modules') -Recurse -Force -ErrorAction SilentlyContinue
 Get-ChildItem -LiteralPath (Join-Path $payloadRoot 'config') -Filter 'personal-*' -File -ErrorAction SilentlyContinue | Remove-Item -Force
 Remove-Item -LiteralPath (Join-Path $payloadRoot 'config\secrets.dpapi.json') -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath (Join-Path $payloadRoot 'config\oauth-tokens.dpapi.json') -Force -ErrorAction SilentlyContinue

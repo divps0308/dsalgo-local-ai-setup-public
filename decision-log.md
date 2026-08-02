@@ -1,5 +1,21 @@
 # Functionality and Architecture Decision Log
 
+## D-042: Recover exact text-serialized Workbench tool requests
+
+- **Status:** Accepted.
+- **Decision:** When Ollama returns no native `tool_calls`, the Workbench may
+  recover one exact JSON object with `name` and `arguments` from assistant text
+  if the name is already present in the Workbench tool allow-list. The request
+  then uses the normal structured execution and approval path.
+- **Rationale:** Small local models sometimes understand the requested action
+  but serialize the tool call in a fenced JSON block instead of the native
+  Ollama field. Supporting this narrow representation improves reliability
+  without granting text responses arbitrary execution authority.
+- **Consequences:** Malformed, unknown, multi-action, or non-object JSON is
+  ignored and remains ordinary assistant text. Approval gates, project-root
+  containment, operating-mode restrictions, and command allow-lists remain
+  unchanged.
+
 ## D-037: Use an Ollama-only deterministic catalog and generated sample agents
 
 - **Decision:** The installer exposes five task-oriented use cases, treats

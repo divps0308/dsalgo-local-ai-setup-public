@@ -219,6 +219,7 @@ function Show-Page {
 function Append-Progress([string]$text){
   if([string]::IsNullOrEmpty($text)){return}
   if($text-match'^(?:Phase: complete|Installation is complete)'){$script:installerSawComplete=$true}
+  if($text-match'Windows must restart'){$script:installerSawRestartRequired=$true}
   if($progress.InvokeRequired){$progress.BeginInvoke([Action[string]]{param($s)$progress.AppendText($s+"`r`n");$progress.SelectionStart=$progress.TextLength;$progress.ScrollToCaret()},$text)|Out-Null}else{$progress.AppendText($text+"`r`n")}
 }
 function Read-NewInstallerOutput([string]$Path,[string]$Kind){
@@ -269,7 +270,7 @@ function Start-Installation {
   $script:installerErrorLog=Join-Path $runtime 'installer-child.stderr.log'
   Set-Content -LiteralPath $script:installerOutputLog -Value '' -Encoding UTF8
   Set-Content -LiteralPath $script:installerErrorLog -Value '' -Encoding UTF8
-  $script:installerOutputOffset=0;$script:installerErrorOffset=0;$script:installerSawComplete=$false
+  $script:installerOutputOffset=0;$script:installerErrorOffset=0;$script:installerSawComplete=$false;$script:installerSawRestartRequired=$false
   $powershell=(Get-Command powershell.exe -ErrorAction Stop).Source
   $installScript=Join-Path $target 'Install.ps1'
   try{
@@ -360,7 +361,10 @@ $installMonitor.Add_Tick({
     $hasExitCode=-not[string]::IsNullOrWhiteSpace([string]$script:installerExitCode)
     # PS2EXE can expose no exit code even after the child writes its terminal
     # phase. The explicit phase is the authoritative success signal in that case.
-    if ($script:installerSawComplete -and ((-not $hasExitCode) -or $script:installerExitCode -eq 0)) {
+    if ($script:installerSawRestartRequired) {
+      Append-Progress 'Windows restart required. Restart Windows, then run Install.exe from the installed folder to resume installation.'
+      $next.Enabled=$false;$cancel.Text='Close'
+    }elseif ($script:installerSawComplete -and ((-not $hasExitCode) -or $script:installerExitCode -eq 0)) {
       $script:page=6;Show-Page
     }else{
       $exitDescription=if($hasExitCode){[string]$script:installerExitCode}else{'unavailable'}

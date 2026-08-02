@@ -461,6 +461,15 @@ Workbench is deliberately native so it can run Windows PowerShell, Git, Maven,
 Gradle, npm, .NET, Docker, and explicitly permitted executables in an approved
 project.
 
+Workbench sends Ollama the native tool schema and normally consumes structured
+`message.tool_calls`. For compatibility with smaller local models, if Ollama
+returns no native tool calls, the backend may recover one exact JSON object with
+`name` and `arguments` from assistant text, including a fenced JSON block. The
+name must match an existing Workbench tool and the arguments must be a JSON
+object; malformed, unknown, or multi-action text remains ordinary assistant
+output. Recovered requests enter the same project-containment, operating-mode,
+command allow-list, and approval-gated execution path as native tool calls.
+
 ### Change-task sequence
 
 ```mermaid
