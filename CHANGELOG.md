@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Workbench now recovers narrowly formatted `{ "name": ..., "arguments": ... }`
+  JSON tool requests emitted as assistant text by small Ollama models, then
+  routes them through the existing tool allow-list and approval gates.
+- Fixed the installer wizard to report the expected Windows restart after enabling WSL and Virtual Machine Platform instead of showing an unavailable exit-code failure.
+- Updated restart guidance to direct users to rerun `Install.exe` after signing in.
+- Added automatic WSL kernel/client update before WSL shutdown during installation.
+
 - Workbench tasks now select enabled sample/custom agents by stable ID and use
   their configured backing model and `maxSteps` budget (defensively capped at
   1000). Added enforced Ask, Plan, and Goal modes, completion-quality checks,

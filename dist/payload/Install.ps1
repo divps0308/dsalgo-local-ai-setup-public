@@ -86,7 +86,7 @@ $restartNeeded=(Enable-RequiredFeature 'Microsoft-Windows-Subsystem-Linux' 'wslF
 $restartNeeded=(Enable-RequiredFeature 'VirtualMachinePlatform' 'virtualMachinePlatform')-or$restartNeeded
 Complete-InstallStep $state 'windows-features'
 if($restartNeeded){
-  Write-Host 'Windows must restart. Progress has been saved; rerun Install.ps1 with the same options after sign-in.'
+  Write-Host 'Windows must restart. Progress has been saved; rerun Install.exe with the same options after sign-in.'
   if($RestartIfRequired){Restart-Computer}
   exit 3010
 }
@@ -121,6 +121,9 @@ if(-not$SkipWSLConfig){
     }
   }
   & "$PSScriptRoot\Configure-WSL.ps1" -Profile Core
+  Write-Host 'Updating the WSL kernel and client'
+  & wsl.exe --update --web-download
+  if($LASTEXITCODE-ne 0){throw 'WSL update failed. Run "wsl.exe --update --web-download" as Administrator, then rerun Install.exe.'}
   & wsl.exe --shutdown
   if($LASTEXITCODE-ne 0){throw 'WSL shutdown failed.'}
 }

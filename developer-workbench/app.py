@@ -333,6 +333,35 @@ TOOLS = [
     },
 ]
 
+TOOL_NAMES = {tool["function"]["name"] for tool in TOOLS}
+
+
+def extract_text_tool_call(content: Any) -> dict[str, Any] | None:
+    """Recover a single JSON tool request emitted as assistant text.
+
+    Some small Ollama models understand the tool schema but serialize the
+    request in a fenced JSON block instead of populating ``message.tool_calls``.
+    Only the exact {name, arguments} shape is accepted, and the name must be a
+    Workbench tool so this compatibility path cannot bypass the tool boundary.
+    """
+    if not isinstance(content, str) or not content.strip():
+        return None
+    candidates = re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", content, flags=re.IGNORECASE | re.DOTALL)
+    candidates.append(content.strip())
+    for candidate in candidates:
+        try:
+            value = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(value, dict) or set(value) - {"name", "arguments"}:
+            continue
+        name = value.get("name")
+        arguments = value.get("arguments", {})
+        if name not in TOOL_NAMES or not isinstance(arguments, dict):
+            continue
+        return {"type": "function", "function": {"name": name, "arguments": arguments}}
+    return None
+
 
 def model_for_role(role: str) -> tuple[str, dict[str, Any]]:
     registry = load_json(MODELS_FILE, {}).get("models", {})
@@ -654,6 +683,12 @@ def run_agent_task(task_id: str) -> None:
             assistant = response.get("message", {})
             messages.append(assistant)
             calls = assistant.get("tool_calls") or []
+            if not calls:
+                text_call = extract_text_tool_call(assistant.get("content", ""))
+                if text_call:
+                    calls = [text_call]
+                    messages[-1] = {**assistant, "tool_calls": calls}
+                    add_event(task_id, "status", "Recovered a JSON tool request emitted as assistant text.")
             if not calls:
                 result = assistant.get("content", "")
                 add_event(task_id, "assistant", result)

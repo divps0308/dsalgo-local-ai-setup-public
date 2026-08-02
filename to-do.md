@@ -3,6 +3,10 @@
 - Validate lifecycle wizard progress streaming and cancellation across
   elevated and non-elevated operation paths.
 
+- Backend: Validate text-serialized JSON tool-call recovery across the supported
+  small Ollama coding models; the compatibility path is intentionally limited
+  to one exact `{name, arguments}` object and still requires normal approvals.
+
 - Consolidate lifecycle operations into a shared single-window progress wizard
   with Next/Cancel navigation and captured stdout/stderr.
 
