@@ -82,7 +82,9 @@ but releases must be created from the protected workflow by the owner.
 
 The repository's release workflow intentionally refuses to run without the
 protected signing secrets; it does not generate or accept a contributor's
-local self-signed key.
+local self-signed key. It imports the owner-controlled PFX only on an
+ephemeral Windows runner, publishes the public certificate and checksums, and
+deletes the imported key material before the job ends.
 ## Public release and signing controls
 
 The repository must never contain a signing private key, PFX, password, or

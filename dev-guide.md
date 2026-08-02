@@ -866,3 +866,34 @@ protected GitHub release workflow. Configure branch protection, required CI,
 and an owner-only `release` environment; keep the PFX and password in that
 environment's secrets. The public `.cer` is verification material, not a
 signing credential.
+
+#### Configure the protected release certificate
+
+The local certificate created by `build/build.ps1` is stored in the current
+user's Windows certificate store (`Cert:\CurrentUser\My`). Export it once,
+outside the repository, to a password-protected PFX:
+
+```powershell
+$cert = Get-ChildItem Cert:\CurrentUser\My |
+  Where-Object { $_.Subject -eq 'CN=DSAlgo Local AI Setup Local Release Signing' -and $_.HasPrivateKey } |
+  Select-Object -First 1
+$password = Read-Host 'PFX password' -AsSecureString
+Export-PfxCertificate -Cert $cert -FilePath .\dsalgo-release-signing.pfx -Password $password
+[Convert]::ToBase64String([IO.File]::ReadAllBytes('.\dsalgo-release-signing.pfx')) | Set-Clipboard
+```
+
+In GitHub, create an environment named `release` under repository Settings →
+Environments. Add required reviewers and restrict deployment branches/tags to
+the protected release path. Add these **environment secrets**, never ordinary
+repository variables: `SIGNING_CERT_PFX_B64` (the clipboard Base64 value) and
+`SIGNING_CERT_PASSWORD` (the PFX password). Delete the local PFX after upload.
+
+The owner runs Actions → Release → Run workflow and supplies an existing tag
+such as `v1.0.0`. The workflow checks the owner identity and tag format,
+checks out that tag, imports the PFX only into the ephemeral Windows runner,
+runs the normal frontend/package/sign build, publishes the EXEs, checksum,
+verification certificate, and `VERIFY.md`, then removes the imported
+certificate and temporary PFX. The private key is not placed in the repository,
+release assets, logs, or artifacts. Rotate the PFX and GitHub secrets if it is
+ever exposed; previously signed releases should then be treated as legacy
+artifacts.
