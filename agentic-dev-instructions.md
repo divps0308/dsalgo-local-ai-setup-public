@@ -41,6 +41,9 @@ and accurately documented.
 - Only core services are supported in the public release.
 - Preserve the OpenAI-compatible `/v1/models` and `/v1/chat/completions`
   gateway contract.
+- Workbench tasks select enabled agents by stable ID. Preserve Ask (read-only),
+  Plan (saved Markdown plan), and Goal (approval-gated continuation) semantics;
+  never execute edits or commands described only in assistant prose.
 
 ## Security rules
 
@@ -131,7 +134,8 @@ Remove a to-do only after proving it resolved and recording the resolution.
 - `Remove.ps1`: remove project containers/services while retaining persistent
   volumes, models, configuration, source, and external projects.
 - `Uninstall.ps1`: confirmed, ownership-aware removal; never delete registered
-  external project directories.
+  external project directories; optionally purge installer-owned data and safely
+  remove the installer-owned application directory after cleanup.
 
 ## Validation gates
 

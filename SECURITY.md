@@ -45,6 +45,12 @@ intended for a single-user local workstation.
 - Read and Git-inspection tools can run automatically. Every model-proposed
   write, deletion, or native PowerShell command creates an approval card and
   waits for an explicit user decision.
+- Approval cards are created only from structured Workbench tool calls. Model
+  prose that contains a command or asks the user to approve it is not parsed or
+  executed.
+- Approval cards are created only from structured Workbench tool calls. Model
+  prose that contains a command or asks the user to approve it is not parsed or
+  executed.
 - Commands execute with the privileges of the account that started the
   Workbench. Do not start it from an elevated Administrator session.
 - Approved commands are intentionally capable of invoking arbitrary installed
@@ -60,3 +66,37 @@ intended for a single-user local workstation.
   patches, and command output. They are stored locally in
   `config/projects.json` and `runtime/developer-workbench/tasks.json`;
   Workbench runtime history is excluded from normal backups.
+## Public release and signing controls
+
+The repository must never contain a signing private key, PFX, password, or
+personal certificate-store export. The checked-in certificate (if present) is
+public verification material only and cannot sign executables without its
+private key. If a private key was ever exposed, rotate it and treat previous
+artifacts as untrusted.
+
+Configure `main` branch protection, required CI checks, and a protected
+`release` environment in GitHub. Limit that environment and release workflow
+approval to the project owner (`divps0308`). Store signing inputs only as
+environment secrets. Contributors may propose changes through pull requests,
+but releases must be created from the protected workflow by the owner.
+
+The repository's release workflow intentionally refuses to run without the
+protected signing secrets; it does not generate or accept a contributor's
+local self-signed key.
+## Public release and signing controls
+
+The repository must never contain a signing private key, PFX, password, or
+personal certificate-store export. The checked-in certificate (if present) is
+public verification material only and cannot sign executables without its
+private key. If a private key was ever exposed, rotate it and treat previous
+artifacts as untrusted.
+
+Configure `main` branch protection, required CI checks, and a protected
+`release` environment in GitHub. Limit that environment and release workflow
+approval to the project owner (`divps0308`). Store signing inputs only as
+environment secrets. Contributors may propose changes through pull requests,
+but releases must be created from the protected workflow by the owner.
+
+The repository's release workflow intentionally refuses to run without the
+protected signing secrets; it does not generate or accept a contributor's
+local self-signed key.

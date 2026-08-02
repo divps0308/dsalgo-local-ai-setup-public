@@ -223,6 +223,16 @@ If you omit `-OpenBrowser`, services start but no browser tabs are opened.
 
 ## 7. Stopping, repairing, removing, and uninstalling
 
+### Workbench tool-call and step-limit behavior
+
+Goal tasks use the selected agent's configured maximum tool-step count (up to a
+defensive cap of 1000). A large value only permits more turns; it does not
+force completion. For safety, the Workbench executes edits and commands only
+when Ollama returns a structured approval-gated tool call. If a model writes a
+command in ordinary response text instead, no command is run and the task is
+reported as incomplete or blocked. Install the missing dependency or rerun the
+task with an agent/model that reliably supports tool calls.
+
 These commands deliberately do different things.
 
 ### Stop and keep everything
@@ -273,6 +283,11 @@ Optional destructive cleanup:
 ```powershell
 .\Uninstall.ps1 -RemoveModels -RemoveData -RemoveWindowsFeatures
 ```
+
+The wizard also presents an unchecked **Permanently remove installer-owned
+Docker images, volumes, and downloaded models** option. Selecting it is
+equivalent to adding `-RemoveImages` together with the model/data cleanup
+switches. Leave it unchecked to retain reusable models and Docker data.
 
 - `-RemoveModels` deletes models recorded as pulled by this installer.
 - `-RemoveData` deletes project Docker volumes, generated credentials, runtime
@@ -565,16 +580,18 @@ Removing a Workbench project registration never deletes its files.
 
 1. Select **Tasks**.
 2. Choose the approved project.
-3. Choose a role:
-   - `coder` for implementation;
-   - `reasoning` for review;
-   - `general` for broad analysis.
-4. Write a focused request.
-5. Choose **Start task**.
-6. Watch events and approval requests.
-7. Review every proposed patch or command.
-8. Approve only what matches the request.
-9. Inspect the final changed-file list, tests, output, and diff.
+3. Choose an enabled sample or custom agent. Its configured backing Ollama
+   model, preferred-use role, tools, and maximum tool-step budget are used;
+   there is no legacy role-only fallback.
+4. Choose a work mode: **Ask** (read and answer only), **Plan** (read and save
+   a unique timestamped Markdown plan under `.workbench-plans`), or **Goal**
+   (continue approval-gated work until verified complete or blocked).
+5. Write a focused request.
+6. Choose **Start task**.
+7. Watch events and approval requests.
+8. Review every proposed patch or command.
+9. Approve only what matches the request.
+10. Inspect the final changed-file list, tests, output, and diff.
 
 Recommended prompt:
 
@@ -605,6 +622,12 @@ on Windows and be visible to the non-Administrator Workbench process.
 
 A command approval is permission to run it, not proof it is safe. Read the full
 command, directory, and stated impact.
+
+Approval cards require structured `tool_calls` from Ollama. A command or patch
+written only as ordinary assistant prose is never executed. Goal mode continues
+after partial progress, but repeated no-tool responses or missing-dependency
+requests become an actionable blocker. The selected agent's `maxSteps` is a
+safety budget capped at 1000, not a completion guarantee.
 
 ### Reviewing patches
 
@@ -949,3 +972,8 @@ to stage selected files, then return to Workbench for inspection.
   [decision-log.md](decision-log.md)
 - Security posture:
   [SECURITY.md](SECURITY.md)
+### License confirmation
+
+The first installer page displays `LICENSE` and a notice about third-party
+software and models. Select the confirmation checkbox to continue. Declining
+or closing the page makes no machine changes.

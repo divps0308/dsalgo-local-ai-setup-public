@@ -55,7 +55,7 @@ not a competing product being replaced.
 | Interface | URL | Purpose |
 |---|---|---|
 | Open WebUI | `http://localhost:3000` | Local chat, model/agent selection, documents, and knowledge collections |
-| Local Agent Studio | `http://localhost:3001` | Agent instructions, model roles, tool permissions, MCP, OAuth, and status |
+| Local Agent Studio | `http://localhost:3001` | Agent instructions, backing Ollama models, preferred-use roles, tools, MCP, OAuth, and status |
 | Developer Workbench | `http://localhost:3002` | Approved Windows projects, AI change tasks, patch/command approval, and Git |
 
 Supporting services:
@@ -178,7 +178,7 @@ publicly trusted; SmartScreen or Unknown Publisher warnings are expected.
 | `Stop.ps1` | Stop services and retain containers/data |
 | `Repair.ps1` | Rebuild and recreate services, leaving them stopped |
 | `Remove.ps1` | Remove containers/services and retain durable data/configuration |
-| `Uninstall.ps1` | Confirmed, ownership-aware uninstall |
+| `Uninstall.ps1` | Confirmed, ownership-aware uninstall with optional purge of installer-owned images, volumes, and models |
 | `Health.ps1` | Check service health |
 | `Backup.ps1` | Back up supported project state |
 
@@ -250,3 +250,11 @@ Version 5 prioritizes a dependable local agent workstation. It does not attempt
 to be a multi-user cloud service, general workflow canvas, enterprise connector
 platform, durable distributed task system, independent MCP proxy, or complete
 observability suite.
+## License and third-party components
+
+The project is released under the MIT License in [`LICENSE`](LICENSE). The
+installer displays that license and a required third-party notice before any
+installation changes are made. Open-source dependencies, container images,
+runtime software, and AI models remain governed by their respective owners'
+licenses and terms; this project does not claim ownership or warranty for
+those components.

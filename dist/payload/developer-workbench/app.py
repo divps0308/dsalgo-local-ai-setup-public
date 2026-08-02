@@ -359,6 +359,7 @@ def available_agents() -> list[dict[str, Any]]:
             "name": str(item.get("name") or item.get("displayName") or agent_id),
             "modelTag": str(item.get("modelTag", "")).strip(),
             "modelRole": str(item.get("modelRole") or item.get("role") or "general"),
+            "maxSteps": max(1, min(int(item.get("maxSteps", MAX_AGENT_STEPS)), 1000)),
         })
     return result
 
@@ -432,13 +433,19 @@ def add_event(task_id: str, kind: str, content: Any) -> None:
 def completion_quality(task: dict[str, Any], content: str) -> tuple[bool, str]:
     """Require evidence that a task actually finished or explicitly needed no change."""
     events = task.get("events", [])
+    normalized = content.lower()
     if any(event.get("kind") == "action" for event in events):
-        return True, ""
+        # A Goal task may perform many approved actions. One action followed by
+        # "next"/"we will proceed" is progress, not completion.
+        has_conclusion = re.search(r"\b(completed|complete|finished|implemented|verified|all requested|no further changes)\b", normalized)
+        is_continuing = re.search(r"\b(next|proceed|continue|let's start|will now|remaining)\b", normalized)
+        if has_conclusion and not is_continuing:
+            return True, ""
+        return False, "The Goal agent stopped after partial progress; it must continue until the requested goal is implemented and verified."
     for event in events:
         if event.get("kind") == "command" and isinstance(event.get("content"), dict):
             if int(event["content"].get("exitCode", -1)) == 0:
                 return True, ""
-    normalized = content.lower()
     no_change = re.search(r"\b(no changes? (are )?needed|no changes? (were )?made|nothing (to|needed to) change)\b", normalized)
     if no_change:
         return True, ""
@@ -613,6 +620,7 @@ def run_agent_task(task_id: str) -> None:
         if not agent_id:
             raise ValueError("Task agent is required; select an enabled agent in Local Agent Studio")
         model, cfg, agent = model_for_agent(agent_id)
+        max_steps = max(1, min(int(agent.get("maxSteps", MAX_AGENT_STEPS)), 1000))
         system = (
             "You are a local Windows coding agent operating on one user-approved project root: "
             f"{project['path']}. Inspect evidence before changing anything. Read tools run immediately. "
@@ -620,7 +628,11 @@ def run_agent_task(task_id: str) -> None:
             "action card. Use propose_write_file with complete file content for edits. Use "
             "propose_command for Maven, Gradle, npm, .NET, Docker, Git, PowerShell, tests, formatters, "
             "or any executable. Never claim an action succeeded without its tool result. Keep changes "
-            "minimal and finish with exact files changed and verification results."
+            "minimal and finish with exact files changed and verification results. Do not ask for "
+            "approval in ordinary assistant prose and then stop: when an edit or command is needed, "
+            "invoke the corresponding approval-gated tool so the Workbench can display an actionable "
+            "Approve/Reject card. In Goal mode, continue pursuing the requested change until it is "
+            "implemented or a concrete blocking reason is recorded."
         )
         if work_mode == "ask":
             system += " This is ASK mode: only inspect/read/search; answer the question and do not propose edits or commands."
@@ -630,8 +642,10 @@ def run_agent_task(task_id: str) -> None:
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ]
+        last_no_tool_result = ""
+        no_tool_repeats = 0
         add_event(task_id, "status", f"Started with {agent.get('name', agent_id)} ({model})")
-        for _ in range(MAX_AGENT_STEPS):
+        for _ in range(max_steps):
             if STATE.cancel_events[task_id].is_set():
                 STATE.update_task(task_id, status="cancelled")
                 add_event(task_id, "status", "Task cancelled")
@@ -660,9 +674,49 @@ def run_agent_task(task_id: str) -> None:
                 valid, reason = completion_quality(current, result)
                 if valid:
                     STATE.update_task(task_id, status="completed", result=result)
-                else:
-                    add_event(task_id, "error", reason)
-                    STATE.update_task(task_id, status="incomplete", error=reason, result=result)
+                    return
+                if work_mode == "goal":
+                    normalized_result = re.sub(r"\s+", " ", result.strip().lower())
+                    if normalized_result and normalized_result == last_no_tool_result:
+                        no_tool_repeats += 1
+                    else:
+                        last_no_tool_result = normalized_result
+                        no_tool_repeats = 1
+                    dependency_blocker = re.search(
+                        r"(?:mvn|maven)\s+(?:is not recognized|not installed)|install(?:ing)?\s+(?:apache\s+)?maven",
+                        normalized_result,
+                    )
+                    if dependency_blocker or no_tool_repeats >= 3:
+                        blocker = (
+                            "The agent could not continue because the required Maven dependency is "
+                            "not available and it repeatedly requested installation without invoking "
+                            "an approval-gated command. Install Maven (or provide a project wrapper) "
+                            "and rerun the Goal task."
+                            if dependency_blocker
+                            else "The agent repeated the same progress response without invoking a tool; review the blocker and rerun the Goal task."
+                        )
+                        add_event(task_id, "error", blocker)
+                        STATE.update_task(task_id, status="incomplete", error=blocker, result=result)
+                        return
+                    # A natural-language progress update is not a terminal Goal
+                    # result. Feed the quality failure back into the same
+                    # conversation so the model must inspect further, request
+                    # the next approval, and verify the remaining work.
+                    add_event(task_id, "status", "Goal continuation required: " + reason)
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            "This is Goal mode and the task is not complete yet. "
+                            f"Completion check: {reason} Continue now: inspect the remaining "
+                            "scope, use the approval-gated tools for every required edit or "
+                            "command, verify the result, and do not stop with a plan or a "
+                            "partial-progress summary. Only finish after the full request is "
+                            "implemented and verified, or report a concrete blocker."
+                        ),
+                    })
+                    continue
+                add_event(task_id, "error", reason)
+                STATE.update_task(task_id, status="incomplete", error=reason, result=result)
                 return
             if assistant.get("content"):
                 add_event(task_id, "assistant", assistant["content"])
@@ -675,7 +729,7 @@ def run_agent_task(task_id: str) -> None:
                 output = execute_tool(task_id, project, name, arguments)
                 add_event(task_id, "tool", {"name": name, "result": output[:10_000]})
                 messages.append({"role": "tool", "tool_name": name, "content": output})
-        result = "Agent reached the maximum tool-step limit."
+        result = f"Agent reached the configured {max_steps}-step limit before completing and verifying the request."
         add_event(task_id, "error", result)
         STATE.update_task(task_id, status="failed", error=result)
     except (Exception, urllib.error.URLError) as exc:

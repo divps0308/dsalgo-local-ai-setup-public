@@ -433,8 +433,8 @@ resolution in `CHANGELOG.md` and any resulting decision in `decision-log.md`.
 ### Developer Workbench UI
 
 - Add in-place project editing when backend support exists.
-- Dynamically list suitable configured agents/model roles when a safe backend
-  contract is available.
+- Validate the enabled sample/custom agent picker against stale, disabled, and
+  missing-model configurations in packaged installs.
 - Add structured repository summary fields when supplied by the backend.
 - Add per-file/per-hunk staging and richer patch review when backend support is
   implemented.
@@ -463,3 +463,39 @@ resolution in `CHANGELOG.md` and any resulting decision in `decision-log.md`.
 - Rebuild and package the Workbench static bundle after agent selection changes.
 - [ ] Workbench task quality: validate model completion evidence and preserve an explicit incomplete state when a model stops after proposals or failed commands; validate multilingual/UTF-8 tool output across Windows encodings.
 - [ ] Workbench modes: validate Ask (read/answer), Plan (read-only plan artifact), and Goal (approval-gated execution) across the packaged UI and installed payload.
+### Workbench follow-up
+
+- Validate that Goal-mode agents invoke approval-gated tools rather than asking
+  for approval in ordinary response text; prose-only approval requests cannot
+  create a UI approval card and must be treated as incomplete.
+
+- Validate the uninstall purge-choice flow across running and stopped Docker
+  Desktop states; the default preserves installer-owned images, volumes, and
+  downloaded models, while the explicit purge option removes them.
+
+- Validate Goal-mode continuation across multi-file tasks; a single approved
+  action followed by a continuation message must remain incomplete and prompt
+  the agent to continue.
+- [ ] Validate the Goal continuation loop through multiple approval rounds and
+  confirm it reaches a verified conclusion rather than stopping after a
+  progress-only response or exhausting the configured safety limit.
+- [ ] Validate repeated no-tool responses and missing-dependency blockers (for
+  example Maven) so Goal tasks stop with an actionable incomplete result rather
+  than looping until the tool-step limit.
+- [ ] Validate that each agent's configured maximum tool-step count is honored
+  end-to-end in the packaged Workbench, including large limits and safety-cap
+  behavior.
+- [ ] Validate that Ask and Plan never expose write/command tools and that Plan
+  artifacts are uniquely named and saved only after the required approval.
+- [ ] Validate that model prose containing an approval request never executes;
+  only structured `tool_calls` may create an approval card.
+- [ ] Validate scheduled permanent removal of an installed application folder
+  from uninstall.exe, including locked executable/process cleanup and the
+  safety behavior when no installer-state marker exists.
+### Public distribution controls
+
+- [ ] Configure GitHub branch protection, required CI checks, and owner-only
+      release-environment approval before the first public release.
+- [ ] Add a generated third-party license/dependency inventory to release
+      artifacts; do not place private signing material in the repository.
+- [ ] Validate the installer license acceptance gate on clean Windows machines.

@@ -7,6 +7,11 @@ $title=New-Object Windows.Forms.Label; $title.Text="$Operation DSAlgo Local AI S
 $output=New-Object Windows.Forms.TextBox; $output.Multiline=$true; $output.ReadOnly=$true; $output.ScrollBars='Both'; $output.Location=New-Object Drawing.Point(24,70); $output.Size=New-Object Drawing.Size(755,380); $output.Font=New-Object Drawing.Font('Consolas',9); $form.Controls.Add($output)
 $next=New-Object Windows.Forms.Button; $next.Text='Next'; $next.Location=New-Object Drawing.Point(570,475); $next.Size=New-Object Drawing.Size(95,30); $form.Controls.Add($next)
 $cancel=New-Object Windows.Forms.Button; $cancel.Text='Cancel'; $cancel.Location=New-Object Drawing.Point(680,475); $cancel.Size=New-Object Drawing.Size(95,30); $form.Controls.Add($cancel)
+$purge=$null
+if($Operation -eq 'Uninstall'){
+  $purge=New-Object Windows.Forms.CheckBox; $purge.Text='Permanently remove installer-owned Docker images, volumes, and downloaded models'; $purge.AutoSize=$true; $purge.Checked=$false; $purge.Location=New-Object Drawing.Point(24,462); $form.Controls.Add($purge)
+  $next.Location=New-Object Drawing.Point(570,510); $cancel.Location=New-Object Drawing.Point(680,510); $form.ClientSize=New-Object Drawing.Size(820,550)
+}
 $script:child=$null; $script:started=$false; $script:completedAt=$null
 function Append([string]$s){if($s){$output.AppendText($s.TrimEnd()+[Environment]::NewLine);$output.SelectionStart=$output.TextLength;$output.ScrollToCaret()}}
 function Update-WizardProgress {
@@ -33,6 +38,7 @@ $next.Add_Click({
   # PowerShell receives the complete -File value.
   $args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$scriptPath+'"'),'-WizardChild')
   if($Operation -in @('Remove','Uninstall')){$args+='-Force'}
+  if($Operation -eq 'Uninstall' -and $purge.Checked){$args+=@('-RemoveData','-RemoveModels','-RemoveImages')}
   $script:child=Start-Process powershell.exe -ArgumentList $args -WorkingDirectory $root -PassThru -RedirectStandardOutput $script:out -RedirectStandardError $script:err
   $script:timer=New-Object Windows.Forms.Timer; $script:timer.Interval=400
   $script:timer.Add_Tick({Update-WizardProgress}); $script:timer.Start()
