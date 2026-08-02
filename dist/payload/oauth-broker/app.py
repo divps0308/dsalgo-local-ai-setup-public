@@ -62,6 +62,9 @@ def log(message: str) -> None:
         stream.write(line)
 
 
+_DPAPI_ENTROPY = base64.b64decode("QWxpZW53YXJlTG9jYWxBSS9PQXV0aEJyb2tlci92MQ==")
+
+
 def _blob(data: bytes) -> tuple[DATA_BLOB, Any]:
     buffer = ctypes.create_string_buffer(data)
     return DATA_BLOB(len(data), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte))), buffer
@@ -71,7 +74,7 @@ def dpapi_protect(data: bytes) -> str:
     if os.name != "nt":
         raise RuntimeError("OAuth token storage requires Windows DPAPI")
     source, source_buffer = _blob(data)
-    entropy, entropy_buffer = _blob(b"AlienwareLocalAI/OAuthBroker/v1")
+    entropy, entropy_buffer = _blob(_DPAPI_ENTROPY)
     output = DATA_BLOB()
     crypt32 = ctypes.windll.crypt32
     kernel32 = ctypes.windll.kernel32
@@ -109,7 +112,7 @@ def dpapi_unprotect(value: str) -> bytes:
     if os.name != "nt":
         raise RuntimeError("OAuth token storage requires Windows DPAPI")
     source, source_buffer = _blob(base64.b64decode(value))
-    entropy, entropy_buffer = _blob(b"AlienwareLocalAI/OAuthBroker/v1")
+    entropy, entropy_buffer = _blob(_DPAPI_ENTROPY)
     output = DATA_BLOB()
     crypt32 = ctypes.windll.crypt32
     kernel32 = ctypes.windll.kernel32
@@ -197,7 +200,7 @@ def request(
     if parsed.scheme not in ({"https", "http"} if allow_http else {"https"}):
         raise RuntimeError("OAuth metadata and token endpoints must use HTTPS")
     data = None
-    final_headers = {"User-Agent": "Alienware-Local-AI-OAuth-Broker/1.0", **(headers or {})}
+    final_headers = {"User-Agent": "DSAlgo-Local-AI-OAuth-Broker/1.0", **(headers or {})}
     if json_body is not None:
         data = json.dumps(json_body).encode("utf-8")
         final_headers["Content-Type"] = "application/json"
@@ -505,7 +508,7 @@ def html_page(title: str, message: str, success: bool) -> bytes:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "AlienwareOAuthBroker/1.0"
+    server_version = "DSAlgoOAuthBroker/1.0"
 
     @property
     def broker(self) -> "BrokerServer":

@@ -103,7 +103,7 @@ Optional Compose profiles:
 | Area | Source of truth | Notes |
 |---|---|---|
 | Model selection and tuning | `config/models.json` | Tags, context, temperature, keep-alive, hardware profile |
-| Agent definitions | `config/agents.json` | Instructions, model roles, built-in tools, MCP assignments, step limits |
+| Agent definitions | `config/agents.json` | Instructions, backing model tags, preferred-use roles, built-in tools, MCP assignments, step limits |
 | Runtime API and tools | `agent-gateway/app.py` | OpenAI-compatible API, tool loop, MCP client, orchestration |
 | Configuration UI | `agent-studio/app.py` | Local management UI and JSON persistence |
 | Native coding UI | `developer-workbench/app.py` | Project registry, agent tasks, approvals, patches, native commands, Git |
@@ -144,8 +144,9 @@ and concurrent Docker memory.
 
 ## Agent and orchestration model
 
-Configured agents select a model *role*, not an Ollama tag. This indirection
-allows model replacement through the registry without rewriting each agent.
+Configured agents select an explicit Ollama backing model tag plus a preferred-
+use role. Workbench tasks resolve the tag from the selected agent and do not
+fall back to role-only execution.
 
 Built-in profiles include general, coding, reasoning, and orchestrator modes.
 The orchestrator follows a planner -> executor -> reviewer -> conditional
@@ -155,6 +156,11 @@ the latency and model swapping.
 
 The gateway exposes configurable agents through an OpenAI-compatible model list,
 allowing Open WebUI to treat agent profiles as selectable models.
+
+The native Workbench provides Ask, Plan, and Goal task modes. Ask is read-only;
+Plan saves a unique timestamped Markdown plan under the approved project; Goal
+continues approval-gated work until verification or a concrete blocker. Edits
+and commands must arrive as structured tool calls so the UI can show approval.
 
 ## Resource policy
 

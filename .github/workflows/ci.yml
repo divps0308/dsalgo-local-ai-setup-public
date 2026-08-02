@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+      - name: Check and build frontend
+        run: |
+          pnpm --dir frontend check
+          pnpm --dir frontend build
+      - name: Parse PowerShell scripts
+        shell: pwsh
+        run: |
+          $errors = @()
+          Get-ChildItem -Recurse -Filter *.ps1 | ForEach-Object {
+            $tokens = $null; $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            $errors += $parseErrors | ForEach-Object { "$($_.Extent.File):$($_.Extent.StartLineNumber) $($_.Message)" }
+          }
+          if ($errors.Count) { $errors | Write-Error; exit 1 }
+      - name: Validate JSON and Python
+        shell: pwsh
+        run: |
+          Get-ChildItem config -Filter *.json | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json | Out-Null }
+          python -m compileall -q agent-gateway agent-studio developer-workbench oauth-broker
+      - name: Validate Compose configuration
+        shell: pwsh
+        run: |
+          $env:AGENT_API_KEY = 'ci-only-placeholder'
+          docker compose config --quiet
+      - name: Run repository safety checks
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File .\Test-GitSafety.ps1

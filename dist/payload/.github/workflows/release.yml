@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.actor == 'divps0308'
+    environment: release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require protected release signing inputs
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_CERT_PFX_B64) -or [string]::IsNullOrWhiteSpace($env:SIGNING_CERT_PASSWORD)) {
+            throw 'Release signing secrets are not configured in the protected release environment.'
+          }
+        env:
+          SIGNING_CERT_PFX_B64: ${{ secrets.SIGNING_CERT_PFX_B64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+      - name: Release build placeholder
+        run: Write-Output 'Configure the protected release build and signing command before publishing artifacts.'

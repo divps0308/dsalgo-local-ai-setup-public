@@ -576,3 +576,66 @@ Workbench task results require a recorded write action, successful command/test 
 ### D-046 — Explicit Workbench work modes (2026-08-01)
 
 Ask and Plan modes expose only read/search tools; Goal retains the existing approval-gated write and command workflow. Plan artifacts are saved by the Workbench under `.workbench-plans` only after an explicit approval, with timestamped unique names.
+
+### D-047 - Approval requests must be tool-mediated (2026-08-01)
+
+Workbench agents must invoke an approval-gated tool for edits and commands;
+asking for approval in response prose does not create an actionable UI card.
+Goal-mode instructions direct agents to use the tool path and continue until
+implementation or a concrete blocker is recorded.
+
+### D-048 - Uninstall data-retention choice (2026-08-01)
+
+Uninstall defaults to retaining installer-owned Docker images, volumes, and
+downloaded Ollama models. A separate unchecked purge option is presented in the
+uninstall wizard; only when explicitly selected are those resources removed.
+
+### D-049 - Goal completion requires a conclusion (2026-08-01)
+
+Goal-mode Workbench tasks do not become complete merely because one approved
+action succeeded. The final response must contain completion/verification
+evidence and must not indicate that work remains; otherwise the task remains
+incomplete so the agent can continue.
+
+### D-050 - Goal progress responses are resumable (2026-08-01)
+
+When a Goal response fails the completion-quality check, the Workbench keeps
+the conversation active and sends explicit continuation feedback instead of
+finalizing the task as incomplete. The agent can therefore inspect more files,
+request subsequent approvals, and verify the remaining scope. A bounded
+tool-step limit remains as a safety stop and is reported as a failure requiring
+user review rather than being presented as successful completion.
+
+### D-051 - Uninstall removes the installer-owned application directory (2026-08-01)
+
+Uninstall now schedules detached deletion of the installed application root
+after cleanup, because uninstall.exe may still be running from that directory.
+Deletion is guarded by the installer-state marker and rejects unsafe roots;
+external registered project roots and source checkouts without that marker are
+not removed.
+
+### D-052 - Goal loops require a concrete blocker guard (2026-08-01)
+
+Goal mode continues after incomplete progress, but repeated identical
+no-tool responses and explicit missing-dependency installation requests are
+treated as actionable blockers. The task is marked incomplete with remediation
+instead of repeatedly consuming the tool-step budget or claiming success.
+
+### D-053 - Agent-specific tool-step limits (2026-08-01)
+
+Workbench execution uses the selected agent's configured `maxSteps` value,
+bounded by a defensive maximum of 1000 steps. This replaces the previous
+hard-coded 30-step execution limit while retaining explicit blocker and
+repetition guards.
+## D-054 — Canonical license and installer acceptance
+
+`LICENSE` is the sole canonical legal license and is displayed by the
+installer before machine changes. A required checkbox acknowledges the MIT
+license and clarifies that third-party software and models retain their own
+ownership and terms.
+
+## D-055 — Owner-controlled public releases
+
+Contributors use pull requests and CI; releases are created only through a
+protected GitHub environment controlled by the repository owner. Signing
+private keys remain in protected secrets and are never committed.

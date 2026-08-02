@@ -17,6 +17,15 @@ if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrat
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+function Get-LicensePath {
+  $roots=@()
+  if(-not[string]::IsNullOrWhiteSpace($PSScriptRoot)){$roots+=@($PSScriptRoot,(Split-Path -Parent $PSScriptRoot))}
+  try{$exeDir=Split-Path -Parent (Get-Process -Id $PID -ErrorAction Stop).MainModule.FileName;if(-not[string]::IsNullOrWhiteSpace($exeDir)){$roots+=@($exeDir,(Split-Path -Parent $exeDir))}}catch{}
+  $roots+=$(Get-Location).Path
+  foreach($root in @($roots|Where-Object{-not[string]::IsNullOrWhiteSpace($_)}|Select-Object -Unique)){$candidate=Join-Path $root 'LICENSE';if(Test-Path -LiteralPath $candidate){return $candidate}}
+  throw 'The canonical LICENSE file could not be found in the packaged installer payload.'
+}
+
 function Get-Hardware {
   $ram=0;$cpu='Unknown';$gpu='CPU only';$vram=0
   try{$os=Get-CimInstance Win32_OperatingSystem;$ram=[math]::Round($os.TotalVisibleMemorySize/1MB)}catch{}
@@ -88,6 +97,8 @@ $cancel=New-Object Windows.Forms.Button;$cancel.Text='Cancel';$cancel.Location=N
 $form.Controls.AddRange(@($back,$next,$cancel))
 
 $page=0;$hardware=$null;$recommendations=$null;$child=$null;$allowWizardClose=$false
+$licenseText=New-Object Windows.Forms.TextBox;$licenseText.Multiline=$true;$licenseText.ReadOnly=$true;$licenseText.ScrollBars='Vertical';$licenseText.Size=New-Object Drawing.Size(720,270);$licenseText.Font=New-Object Drawing.Font('Segoe UI',9)
+$licenseConfirm=New-Object Windows.Forms.CheckBox;$licenseConfirm.Text='I have read and agree to the LICENSE and the third-party software/model notice.';$licenseConfirm.AutoSize=$true
 $installPath=New-Object Windows.Forms.TextBox;$installPath.Text=Join-Path $env:USERPROFILE 'DSAlgo Local AI Setup';$installPath.Width=580
 $hardwareText=New-Object Windows.Forms.TextBox;$hardwareText.Multiline=$true;$hardwareText.ReadOnly=$true;$hardwareText.Size=New-Object Drawing.Size(720,260)
 $hardwareConfirm=New-Object Windows.Forms.CheckBox;$hardwareConfirm.Text='I have reviewed and confirm this detected hardware information.';$hardwareConfirm.Width=600
@@ -138,15 +149,23 @@ function Update-RecommendationSummary {
 function Show-Page {
   $content.Controls.Clear();$back.Enabled=$page-gt0;$next.Enabled=$true;$next.Text='Next'
   switch($page){
-    0{$title.Text='Choose installation location';Add-Row 'Installation folder' $installPath 30}
-    1{
+    0{
+      $title.Text='License and third-party components'
+      $licenseContent=Get-Content -LiteralPath (Get-LicensePath) -Raw -ErrorAction Stop
+      $licenseContent=$licenseContent -replace "`r`n|`n|`r","`r`n"
+      $licenseText.Text=$licenseContent.TrimEnd()+"`r`n`r`nTHIRD-PARTY SOFTWARE AND MODELS`r`n`r`nThis distribution may install or invoke open-source software, container images, services, and AI models. Those components remain the property of their respective authors and licensors and are governed by their own licenses and terms. DSAlgo Local AI Setup claims no ownership of them and makes no responsibility or warranty claim for third-party behavior. They are provided for lawful, user-directed use, including fair-use purposes where applicable. Review the applicable licenses and terms before continuing."
+      $licenseText.Location=New-Object Drawing.Point(5,5);$licenseConfirm.Location=New-Object Drawing.Point(5,285)
+      $content.Controls.AddRange(@($licenseText,$licenseConfirm));$next.Enabled=$licenseConfirm.Checked
+    }
+    1{$title.Text='Choose installation location';Add-Row 'Installation folder' $installPath 30}
+    2{
       $title.Text='Review detected hardware'
       if(-not$script:hardware){$script:hardware=Get-Hardware}
       $hardwareText.Text="CPU: $($script:hardware.Cpu)`r`nInstalled RAM: $($script:hardware.RamGiB).0 GiB`r`nGPU: $($script:hardware.Gpu)`r`nDedicated VRAM: $($script:hardware.VramGiB).0 GiB"
       $hardwareText.Location=New-Object Drawing.Point(5,15);$hardwareConfirm.Location=New-Object Drawing.Point(5,300)
       $content.Controls.AddRange(@($hardwareText,$hardwareConfirm))
     }
-    2{
+    3{
       $title.Text='Select model preferences'
       Add-Row 'Primary use case' $useCase 5;Add-Row 'Resource allocation' $allocation 50
       $script:allocDesc=New-Object Windows.Forms.Label
@@ -172,7 +191,7 @@ function Show-Page {
       $provenanceNote.Location=New-Object Drawing.Point(200,280);$content.Controls.Add($provenanceNote)
       $note=New-Object Windows.Forms.Label;$note.Text='Comfortable preserves capacity for Windows, browsers, IDEs and Docker. Aggressive retains less headroom.';$note.Location=New-Object Drawing.Point(5,330);$note.Size=New-Object Drawing.Size(700,45);$content.Controls.Add($note)
     }
-    3{
+    4{
       $title.Text='Review model recommendations'
       $useCaseValue=@{'General Conversation (Chat)'='GeneralChat';'Reasoning'='Reasoning';'Coding'='Coding';'Deep Research'='DeepResearch';'All'='All'}[[string]$useCase.SelectedItem]
       $script:recommendations=Get-Recommendations $script:hardware $useCaseValue ([string]$allocation.SelectedItem) ([string]$prefMode.SelectedItem) ([string]$vendor.SelectedItem) ([string]$country.SelectedItem)
@@ -192,8 +211,8 @@ function Show-Page {
       if($models.Count-eq0){$recommendIntro.Text=if($prefMode.SelectedItem-eq'Require'){'No compatible Ollama model matched the required provenance filter.'}else{'No recommended model configurations found.'}}
       $content.Controls.AddRange(@($recommendIntro,$recommendGrid,$recommendSummary));$next.Text='Install';Update-RecommendationSummary
     }
-    4{$title.Text='Installing DSAlgo Local AI Setup';$content.Controls.Add($progress);$back.Enabled=$false;$next.Enabled=$false}
-    5{$title.Text='Installation complete';$done=New-Object Windows.Forms.Label;$done.Text='The setup was installed successfully and is currently stopped. Use Start from the Desktop or Start Menu.';$done.Location=New-Object Drawing.Point(10,30);$done.Size=New-Object Drawing.Size(700,80);$content.Controls.Add($done);$back.Enabled=$false;$next.Text='Finish'}
+    5{$title.Text='Installing DSAlgo Local AI Setup';$content.Controls.Add($progress);$back.Enabled=$false;$next.Enabled=$false}
+    6{$title.Text='Installation complete';$done=New-Object Windows.Forms.Label;$done.Text='The setup was installed successfully and is currently stopped. Use Start from the Desktop or Start Menu.';$done.Location=New-Object Drawing.Point(10,30);$done.Size=New-Object Drawing.Size(700,80);$content.Controls.Add($done);$back.Enabled=$false;$next.Text='Finish'}
   }
   $form.TopMost=$true;$form.BringToFront();$form.Activate()
 }
@@ -264,22 +283,24 @@ function Start-Installation {
 }
 
 $back.Add_Click({if($script:page-gt0){$script:page--;Show-Page}})
+$licenseConfirm.Add_CheckedChanged({if($script:page -eq 0){$next.Enabled=$licenseConfirm.Checked}})
 $next.Add_Click({
-  if($script:page-eq0-and[string]::IsNullOrWhiteSpace($installPath.Text)){[Windows.Forms.MessageBox]::Show($form,'Choose an installation folder.');return}
-  if($script:page-eq1-and-not$hardwareConfirm.Checked){[Windows.Forms.MessageBox]::Show($form,'Review and confirm the detected hardware before continuing.');return}
-  if($script:page-eq2-and$prefMode.SelectedItem-eq'Require'-and$vendor.SelectedItem-eq'Any'-and$country.SelectedItem-eq'Any'){[Windows.Forms.MessageBox]::Show($form,'Select an organization, country, or both when Require is selected.');return}
-  if($script:page-eq3){
+  if($script:page-eq0-and-not$licenseConfirm.Checked){[Windows.Forms.MessageBox]::Show($form,'You must read and accept the LICENSE before continuing.');return}
+  if($script:page-eq1-and[string]::IsNullOrWhiteSpace($installPath.Text)){[Windows.Forms.MessageBox]::Show($form,'Choose an installation folder.');return}
+  if($script:page-eq2-and-not$hardwareConfirm.Checked){[Windows.Forms.MessageBox]::Show($form,'Review and confirm the detected hardware before continuing.');return}
+  if($script:page-eq3-and$prefMode.SelectedItem-eq'Require'-and$vendor.SelectedItem-eq'Any'-and$country.SelectedItem-eq'Any'){[Windows.Forms.MessageBox]::Show($form,'Select an organization, country, or both when Require is selected.');return}
+  if($script:page-eq4){
     $selectedForInstall=@(Get-SelectedRecommendations)
     if($selectedForInstall.Count-lt1){[Windows.Forms.MessageBox]::Show($form,'Select at least one model to install.');return}
     if($selectedForInstall.Count-gt3){[Windows.Forms.MessageBox]::Show($form,'Select no more than three models to install.');return}
-    $script:page=4;Show-Page
+    $script:page=5;Show-Page
     try{Start-Installation}catch{
       Append-Progress "ERROR: The installer could not prepare the selected configuration: $($_.Exception.Message)"
       $next.Enabled=$false;$cancel.Text='Close'
     }
     return
   }
-  if($script:page-eq5){$form.Close();return}
+  if($script:page-eq6){$form.Close();return}
   $script:page++;Show-Page
 })
 $prefMode.Add_SelectedIndexChanged({
@@ -340,7 +361,7 @@ $installMonitor.Add_Tick({
     # PS2EXE can expose no exit code even after the child writes its terminal
     # phase. The explicit phase is the authoritative success signal in that case.
     if ($script:installerSawComplete -and ((-not $hasExitCode) -or $script:installerExitCode -eq 0)) {
-      $script:page=5;Show-Page
+      $script:page=6;Show-Page
     }else{
       $exitDescription=if($hasExitCode){[string]$script:installerExitCode}else{'unavailable'}
       Append-Progress "Installation failed with exit code $exitDescription. Review runtime\\installer-child.stderr.log for the full error."

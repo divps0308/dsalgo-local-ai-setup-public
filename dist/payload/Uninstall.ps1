@@ -1,6 +1,7 @@
 param(
   [switch]$RemoveData,
   [switch]$RemoveModels,
+  [switch]$RemoveImages,
   [switch]$RemoveWindowsFeatures,
   [switch]$Force,
   [switch]$Elevated,
@@ -24,7 +25,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
   $hostExe = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
   $isPowerShellHost = [IO.Path]::GetFileName($hostExe) -match '^(powershell|pwsh)(\.exe)?$'
   $forward = @('-Elevated','-WizardChild')
-  if($RemoveData){$forward+='-RemoveData'}; if($RemoveModels){$forward+='-RemoveModels'}
+  if($RemoveData){$forward+='-RemoveData'}; if($RemoveModels){$forward+='-RemoveModels'}; if($RemoveImages){$forward+='-RemoveImages'}
   if($RemoveWindowsFeatures){$forward+='-RemoveWindowsFeatures'}; if($Force){$forward+='-Force'}
   $arguments = if ($isPowerShellHost) { @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$(Join-Path $scriptRoot 'Uninstall.ps1')`"") + $forward } else { $forward }
   $elevatedProcess = Start-Process -FilePath $hostExe -Verb RunAs -ArgumentList $arguments -PassThru
@@ -59,7 +60,9 @@ if(Test-DockerAvailable){
 if(Test-DockerAvailable){
   $arguments=@('down','--remove-orphans')
   if($RemoveData){$arguments+='--volumes'}
-  $arguments+=@('--rmi','local')
+  # Explicit purge removes images belonging to this Compose project. This is
+  # intentionally opt-in because an image may otherwise be shared by Docker.
+  if($RemoveImages){$arguments+=@('--rmi','all')}
   try{Compose $arguments}catch{Write-Warning "Container cleanup was incomplete: $_"}
 }
 if($RemoveModels-and(Get-Command ollama -ErrorAction SilentlyContinue)){
@@ -100,5 +103,20 @@ if($RemoveData){
   }
   Get-ChildItem -LiteralPath $config -Filter 'personal-*' -File -ErrorAction SilentlyContinue|Remove-Item -Force
 }
-Write-Host 'Uninstall complete. The source directory and any registered external project directories were intentionally retained.'
+# The installed application directory is installer-owned and must not be left
+# behind. Schedule deletion in a detached process because this script may be
+# running from uninstall.exe inside the directory being removed. The marker
+# prevents a source checkout without an installation state from being erased.
+$installStateMarker=Join-Path $Root 'runtime\install-state.json'
+if(Test-Path -LiteralPath $installStateMarker){
+  $targetRoot=[IO.Path]::GetFullPath($Root)
+  if($targetRoot.Length -lt 4 -or $targetRoot -match '^[A-Za-z]:\\?$'){throw 'Refusing to remove an unsafe installation path.'}
+  $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes(
+    "Start-Sleep -Seconds 3; Remove-Item -LiteralPath '$($targetRoot.Replace("'","''"))' -Recurse -Force -ErrorAction SilentlyContinue"
+  ))
+  Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand',$encoded) | Out-Null
+  Write-Host 'Uninstall complete. The installer-owned application directory is scheduled for permanent removal.'
+} else {
+  Write-Host 'Uninstall complete. No installer state marker was found; the current directory was retained.'
+}
 if($RemoveWindowsFeatures){Write-Host 'Restart Windows to finish removing installer-owned Windows features.'}

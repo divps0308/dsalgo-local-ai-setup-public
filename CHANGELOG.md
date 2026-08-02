@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Workbench tasks now select enabled sample/custom agents by stable ID and use
+  their configured backing model and `maxSteps` budget (defensively capped at
+  1000). Added enforced Ask, Plan, and Goal modes, completion-quality checks,
+  structured-tool-call approval requirements, and Goal repetition/dependency
+  guards.
+- Uninstall now offers an unchecked opt-in purge of installer-owned Docker
+  images, volumes, and downloaded Ollama models, and schedules safe removal of
+  the installer-owned application directory after cleanup.
+
 - Added a shared single-window lifecycle wizard for Start, Stop, Repair,
   Remove, and Uninstall with Next/Cancel controls and captured child output.
 
@@ -261,3 +270,9 @@
 
 - Hardened Developer Workbench startup against elevated-owned runtime files
   and stale PID metadata so normal-user startup can bind port 3002 reliably.
+### Changed
+
+- Added a required installer license/third-party notice screen.
+- Removed the tracked root `start.exe` and legacy `mit_license.md`; `LICENSE`
+  is canonical.
+- Added Windows GitHub Actions CI and owner-gated release workflow scaffolding.

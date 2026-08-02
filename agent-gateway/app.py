@@ -264,7 +264,7 @@ def http_get(url: str, max_chars: int = 12000) -> str:
             if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
                 return "Requests to private, loopback, link-local, or reserved addresses are blocked."
         with httpx.Client(timeout=20, follow_redirects=False) as client:
-            response = client.get(url, headers={"User-Agent": "Alienware-Local-Agent/2.0"})
+            response = client.get(url, headers={"User-Agent": "DSAlgo-Local-Agent/2.0"})
             if 300 <= response.status_code < 400:
                 return "HTTP redirects are not followed for security. Fetch the final public URL directly."
             response.raise_for_status()
@@ -397,7 +397,7 @@ def mcp_request(server: dict[str, Any], method: str, params: dict[str, Any] | No
 
 def mcp_list_tools(server: dict[str, Any]) -> list[dict[str, Any]]:
     session = None
-    init, session = mcp_request(server, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "alienware-local-agent", "version": APP_VERSION}})
+    init, session = mcp_request(server, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "dsalgo-local-agent", "version": APP_VERSION}})
     if init.get("error"): raise RuntimeError(init["error"])
     try:
         with httpx.Client(timeout=15) as client:
@@ -448,7 +448,7 @@ def invoke_tool(name: str, arguments: Any, allowed: set[str], mcp_mapping: dict[
     if mcp_mapping and name in mcp_mapping:
         server, original = mcp_mapping[name]
         try:
-            init, session = mcp_request(server, "initialize", {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"alienware-local-agent","version":APP_VERSION}})
+            init, session = mcp_request(server, "initialize", {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"dsalgo-local-agent","version":APP_VERSION}})
             result, _ = mcp_request(server, "tools/call", {"name": original, "arguments": arguments}, session)
             if result.get("error"): return trim(result["error"])
             return trim(result.get("result", {}))

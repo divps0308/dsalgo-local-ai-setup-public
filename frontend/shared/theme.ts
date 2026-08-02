@@ -1,6 +1,6 @@
 import type { ThemeMode } from "./types";
 
-export const THEME_KEY = "alienware-local-ai-theme";
+export const THEME_KEY = "dsalgo-local-ai-theme";
 
 export function initialTheme(): ThemeMode {
   const stored = localStorage.getItem(THEME_KEY);

@@ -294,9 +294,24 @@ The required generic shape is:
 }
 ```
 
+Workbench execution uses the selected agent's configured backing model and
+`maxSteps` setting from
+`config/agents.json`, bounded by a defensive maximum of 1000 steps. This is an
+execution-turn budget, not a guarantee that a model will complete a task. The
+model must return a structured `tool_calls` response for edits or commands;
+ordinary prose such as “please approve this command” cannot create an approval
+card and is never executed by the backend.
+
 A bare JSON array is invalid even when empty.
 `Assert-GenericConfiguration` checks the structure before Install or Repair
 builds the setup.
+
+Task modes are backend-enforced: Ask permits bounded reads and an answer; Plan
+permits bounded reads and a uniquely named Markdown plan under
+`.workbench-plans`; Goal permits approval-gated writes and commands and keeps
+continuing after partial progress until verification or a concrete blocker.
+Only structured `tool_calls` can create approval cards. Prose approval requests
+are not parsed or executed.
 
 ### `config/runtime-policy.json`
 
@@ -457,7 +472,7 @@ sequenceDiagram
     participant FS as Approved project
     participant CMD as Native command
 
-    U->>UI: Select project, model role, request
+    U->>UI: Select project, agent, work mode, request
     UI->>WB: Create task
     WB->>FS: Read bounded project context
     WB->>O: Request next tool action
@@ -554,6 +569,97 @@ The build must update both:
 
 The current known form-dialog accessibility advisories are recorded in
 `to-do.md`; do not hide warnings without resolving semantics.
+
+### Run the complete stack from source (no EXE build)
+
+This path is intended for contributors. It runs the checked-out PowerShell and
+Python sources directly; it does not call `build/build.ps1`, install PS2EXE, or
+create `dist/*.exe` files.
+
+1. Open PowerShell in the repository root and verify the development
+   prerequisites in [Development prerequisites](#4-development-prerequisites):
+   WSL2, Docker Desktop, Ollama, Python, Node.js/pnpm, and Git.
+2. Create or activate the local environment file from the public template. Do
+   not commit `.env` or copy secrets into tracked configuration:
+
+   ```powershell
+   Copy-Item .env.example .env -ErrorAction SilentlyContinue
+   ```
+
+   Set a local `AGENT_API_KEY` and any machine-specific values required by the
+   Compose file. Keep the key out of logs and support reports.
+3. Install frontend dependencies and build the committed static bundles:
+
+   ```powershell
+   pnpm --dir frontend install --frozen-lockfile
+   pnpm --dir frontend check
+   pnpm --dir frontend build
+   ```
+
+4. If prerequisites, models, WSL settings, or runtime state are not installed,
+   run the source installer. This performs setup but does not require EXEs:
+
+   ```powershell
+   Set-ExecutionPolicy -Scope Process Bypass
+   .\Install.ps1
+   ```
+
+   For an already prepared machine, skip this step and continue with Compose.
+5. Start native Ollama, Docker Desktop, the Compose services, OAuth broker, and
+   Workbench from source:
+
+   ```powershell
+   .\Start.ps1 -OpenBrowser
+   ```
+
+   Start elevates only the Docker/container phase. The OAuth broker and
+   Workbench should run as the signed-in, non-Administrator user. The browser
+   option opens the three local interfaces at ports 3000, 3001, and 3002.
+6. Verify the deployment and inspect logs before testing features:
+
+   ```powershell
+   .\Health.ps1
+   .\Test-LocalAI.ps1
+   docker compose ps
+   Get-Content .\runtime\start.log -ErrorAction SilentlyContinue
+   Get-Content .\runtime\developer-workbench\workbench.log -ErrorAction SilentlyContinue
+   ```
+
+   The native services write additional diagnostics under `runtime/`; do not
+   publish those logs because they can contain project paths or prompts.
+7. Exercise the UIs manually: Open WebUI (`localhost:3000`), Studio
+   (`localhost:3001`), and Workbench (`localhost:3002`). In Studio, verify
+   model assignment, agent save, and MCP validation. In Workbench, register a
+   temporary project root, then test Ask, Plan, and Goal with a small fixture
+   repository. Confirm that writes and commands produce approval cards and
+   that Ask never mutates files.
+8. Run focused source checks after changes:
+
+   ```powershell
+   Get-Content config\models.json -Raw | ConvertFrom-Json | Out-Null
+   Get-Content config\agents.json -Raw | ConvertFrom-Json | Out-Null
+   python -m unittest oauth-broker\test_app.py
+   .\Test-GitSafety.ps1
+   ```
+
+9. Stop the source deployment when finished. `Stop.ps1` retains containers,
+   volumes, models, and configuration for the next run:
+
+   ```powershell
+   .\Stop.ps1
+   ```
+
+Use `Repair.ps1` when images or generated configuration need rebuilding; it
+leaves services stopped. Use `Remove.ps1` only when project containers should
+be removed. Reserve `Uninstall.ps1` for an explicitly requested cleanup.
+
+For direct component debugging, run `python agent-gateway\app.py` only when
+the Compose gateway is stopped and its environment/configuration variables are
+provided. Similarly, `python agent-studio\app.py` and
+`python developer-workbench\app.py` are native development entry points; avoid
+running duplicate instances on ports 3001 or 3002. The normal `Start.ps1` path
+is preferred because it preserves the intended privilege split and runtime
+state handling.
 
 ## 15. PowerShell lifecycle architecture
 
@@ -752,3 +858,11 @@ Before handoff:
 - frontend dialog focus trapping and richer diff review remain follow-up work.
 
 Do not convert known limitations into undocumented assumptions.
+### Public releases and signing
+
+Never commit a signing private key or PFX. Local builds may use a developer's
+own certificate for testing, but release artifacts are created only by the
+protected GitHub release workflow. Configure branch protection, required CI,
+and an owner-only `release` environment; keep the PFX and password in that
+environment's secrets. The public `.cer` is verification material, not a
+signing credential.
