@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Removed the obsolete `context_for_codex.md` file and unreferenced legacy
+  component-management wrappers (`Manage-*`, `Start-*`, `Stop-*`, and
+  `Update.ps1`). The documented lifecycle commands remain unchanged.
 - Workbench now recovers narrowly formatted `{ "name": ..., "arguments": ... }`
   JSON tool requests emitted as assistant text by small Ollama models, then
   routes them through the existing tool allow-list and approval gates.
