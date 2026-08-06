@@ -1,5 +1,7 @@
 {
   "schemaVersion": 1,
+  "configurationSource": "installer-managed-template",
+  "configurationNote": "The installer replaces hardware and model values deterministically from the user's confirmed selections before services start.",
   "hardwareProfile": {
     "gpu": "detected-at-install",
     "vramMB": 0,
