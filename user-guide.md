@@ -713,7 +713,11 @@ not erase agent, MCP, project, or model settings.
 
 ## 15. Models and resource use
 
-The default registry uses one main generation model at a time when practical:
+The repository includes a valid bootstrap registry so tools can parse the
+expected schema before installation. It is installer-managed: `install.exe`
+replaces the hardware profile and selected model values deterministically
+before services start. The entries below are fallback defaults in the source
+template, not a guarantee that these models will be installed:
 
 | Role | Default model | Typical use |
 |---|---|---|
