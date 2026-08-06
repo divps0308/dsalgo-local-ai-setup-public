@@ -1,5 +1,45 @@
 # Functionality and Architecture Decision Log
 
+## D-046: Enforce structured progress at the Workbench boundary
+
+- **Status:** Accepted.
+- **Decision:** Goal mode may execute only structured Workbench tool calls.
+  Known models without tool-calling support are rejected for Goal mode. File
+  writes reject Markdown-fenced or empty content before approval, and repeated
+  prose-only progress is bounded before becoming an explicit incomplete state.
+- **Rationale:** Prompting alone cannot make all local models reliably emit
+  executable tool calls or clean patches.
+- **Consequences:** Ask and Plan remain useful for text-oriented models; Goal
+  requires a tool-capable model and still requires approval for mutations.
+
+## D-063: Recover explicit text-form tool calls conservatively
+
+- **Status:** Accepted.
+- **Decision:** The gateway may recover an explicitly formatted, allow-listed
+  tool call emitted as a `tool_code`/code-fenced expression or simple JSON when
+  a model omits the native Ollama `tool_calls` field. Recovered calls go through
+  the unchanged permission, operating-mode, URL-safety, and approval boundary;
+  ordinary prose and ambiguous expressions are returned as text and never run.
+- **Rationale:** Local models vary in native tool-calling support, but silently
+  executing arbitrary prose would weaken the workstation's security model.
+- **Consequences:** More models can use tools, while unsupported or malformed
+  pseudo-calls still produce no side effect and remain diagnosable.
+
+## D-045: Treat independent audit findings as release-bar work
+
+- **Status:** Accepted.
+- **Decision:** Position the current distribution as controlled-beta outside
+  its Windows/NVIDIA validated path. Track blocking preflight and post-install
+  checks, a versioned compatibility matrix, role-coverage validation, and
+  actionable health diagnostics as release work. Treat selected-agent
+  Workbench behavior (sample/custom agent by stable ID and backing model) as
+  authoritative over older role-only notes.
+- **Rationale:** The independent audit found strong local capability and
+  security boundaries, but moderate installation/reliability confidence and
+  documentation contradictions.
+- **Consequences:** Preserve controlled-beta wording until representative
+  validation is complete; documentation cleanup is part of release quality.
+
 ## D-043: Remove unreferenced legacy root wrappers
 
 - **Status:** Accepted.
@@ -110,10 +150,10 @@
 
 This living log records accepted functionality, architecture, security,
 deployment, model, and user-experience decisions for DSAlgo Local AI Setup. Review
-and update it with every repository change. Add a new entry whenever a change
-introduces, revises, supersedes, or rejects a meaningful decision. Do not
-silently rewrite historical decisions; mark superseded decisions and link the
-replacement.
+and keep it current as the repository evolves. Add an entry whenever a change
+introduces, revises, supersedes, or rejects a meaningful decision. Historical
+entries remain visible and are marked superseded when replaced, with a link to
+the replacement decision.
 
 ## Decision format
 
@@ -658,6 +698,19 @@ Workbench execution uses the selected agent's configured `maxSteps` value,
 bounded by a defensive maximum of 1000 steps. This replaces the previous
 hard-coded 30-step execution limit while retaining explicit blocker and
 repetition guards.
+
+### D-056 - Structured Workbench protocol at the model boundary (2026-08-05)
+
+Workbench tasks use protocol version 1 for model/tool exchange. Native
+`tool_calls` and the narrowly scoped JSON compatibility envelope are normalized
+to known Workbench functions; ordinary prose is never interpreted as a command.
+Tool results are returned to the model in a JSON envelope. Goal mode requires
+structured actions and completion evidence, retries actionable prose as
+incomplete progress, and stops with an explicit incomplete state after its
+existing safety guards are reached. This improves interoperability with local
+models without claiming that every model reliably supports tool calling.
+Goal requests also ask Ollama for JSON-formatted output when supported; a
+single compatibility retry omits that option for older Ollama versions.
 ## D-054 — Canonical license and installer acceptance
 
 `LICENSE` is the sole canonical legal license and is displayed by the
@@ -670,3 +723,59 @@ ownership and terms.
 Contributors use pull requests and CI; releases are created only through a
 protected GitHub environment controlled by the repository owner. Signing
 private keys remain in protected secrets and are never committed.
+### D-057 - No-op and repeated proposal protection (2026-08-05)
+
+Workbench write proposals are compared with the current file before an
+approval card is created. Identical content produces a no-op tool result rather
+than an approval request. Repeated identical tool requests are bounded and end
+in an explicit incomplete state so Goal mode cannot trap the user in approval
+loops.
+
+### D-058 - Controller-owned cross-model Goal protocol (2026-08-05)
+
+Goal mode treats every model as an untrusted protocol client. The Workbench
+owns the canonical tool schemas, validates complete argument objects before
+dispatch, normalizes only documented unambiguous aliases, and returns bounded
+structured repair errors to malformed callers. It also requires verification
+after the final mutation and bounds repeated or no-progress tool loops. These controls
+provide consistent safety and failure semantics across models without claiming
+that every model has equivalent reasoning or coding ability.
+
+### D-059 - Evidence-based Goal progress and completion (2026-08-06)
+
+The Workbench does not count a successful process exit as progress by itself.
+Progress is reset only by a real file mutation, a recognized build/test/
+verification command, or inspection after a mutation. Completion-only output
+commands are rejected and semantically equivalent claim commands are treated as
+duplicates. A completion claim without executable verification receives one
+repair request; repetition ends the task as incomplete. Requests involving
+compilation, builds, tests, or verification require successful matching evidence
+and cannot be completed from a diff alone.
+
+### D-061 - Explicit web-tool instruction (2026-08-06)
+
+When an agent has the `http_get` permission, the gateway adds a system-level
+instruction requiring that tool for current or external information and
+requiring transparent reporting when it fails. Agents without the permission
+are instructed not to claim live web access. Runtime policy remains authoritative
+and removes the tool in Restricted Online and Strict Offline modes.
+
+### D-062 - Contextual Help Center coverage (2026-08-06)
+
+Local Agent Studio and Developer Workbench use screen-context help topics as
+the definitive first-run guide. Topics describe visible controls, side
+effects, permissions, policy boundaries, approval semantics, and remediation.
+The shared drawer accepts nested section names so tool guidance remains visible
+from its parent screen. New UI controls must add or update corresponding topics.
+
+### D-060 - Bounded multimodal gateway input (2026-08-06)
+
+The gateway normalizes OpenAI-compatible text/image/document content blocks into
+Ollama-compatible messages. Only local base64 data URLs for common image types
+and supported text-bearing documents are accepted, with 12 MB image and 20 MB
+document limits; remote URLs and unsupported blocks are rejected with actionable
+client errors. DOCX is extracted without executing embedded content, while PDF
+text extraction uses the pinned `pypdf` dependency. This preserves attachment
+permissions and SSRF boundaries while allowing configured models to inspect
+local files. Vision and extraction quality remain model-dependent and require
+validation.

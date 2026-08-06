@@ -16,6 +16,15 @@ General Conversation, Reasoning, Coding, Deep Research, or All. The confirmed
 result controls model downloads and creates enabled sample general, coding,
 and deep-research agents.
 
+## Release readiness
+
+This is a capable local workstation distribution, but it should currently be
+treated as controlled-beta software rather than a universal installer. Disk
+eligibility, GPU placement, Docker/WSL allocation, lifecycle recovery, and
+end-to-end model/tool behavior still need broader representative-machine
+validation. A public release should add a blocking preflight report,
+post-install readiness checks, and a versioned compatibility matrix.
+
 ## What it enables
 
 - Guided exploration of local models with deterministic, machine-aware selection.
@@ -94,7 +103,7 @@ Choose the guide for your task:
 - [dev-guide.md](dev-guide.md) — architecture, diagrams, source layout,
   technology stack, APIs, security, development, testing, hooks, and commits.
 - [agentic-dev-instructions.md](agentic-dev-instructions.md) — reusable
-  persistent instructions for Claude, Codex, or another coding agent.
+  repository standards used by maintainers and automated development tools.
 - [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) — project mission, history,
   scope, and design context.
 - [decision-log.md](decision-log.md) — accepted functionality and architecture

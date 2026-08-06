@@ -4,8 +4,8 @@
 
 This is a decision guide, not a universal ranking. Features and upstream
 defaults change rapidly. “Available upstream” is not the same as “validated
-and supported by this distribution”; version- and date-specific verification
-is required before making release claims.
+and supported by this distribution"; release claims require version- and
+date-specific verification.
 
 ## Positioning
 
@@ -17,6 +17,10 @@ Windows coding workflow with approved project roots and human approval gates.
 
 It is not a multi-user cloud product, public web service, or full visual
 workflow platform. Open WebUI is a core component and foundation of the stack.
+
+The distribution is currently controlled-beta outside its Windows/NVIDIA
+validated path. This comparison describes intended boundaries, not a guarantee
+that every listed workflow or hardware combination has been tested.
 
 ## Capability guide
 

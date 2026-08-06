@@ -7,7 +7,7 @@
   let closeButton = $state<HTMLButtonElement>();
   let filtered = $derived(topics.filter((topic) => {
     const search = `${topic.title} ${topic.section} ${topic.body}`.toLowerCase();
-    return (!context || topic.section === context || topic.section === "General") && search.includes(query.toLowerCase());
+    return (!context || topic.section === context || topic.section === "General" || topic.section.startsWith(`${context} · `)) && search.includes(query.toLowerCase());
   }));
   $effect(() => {
     if (open) tick().then(() => closeButton?.focus());

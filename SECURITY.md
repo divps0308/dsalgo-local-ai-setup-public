@@ -3,6 +3,13 @@
 The agent gateway, native Developer Workbench, and native MCP OAuth broker are
 intended for a single-user local workstation.
 
+The security design is appropriate for that local developer-machine scope, not
+an internet-facing or multi-user deployment. Installation and reliability are
+still controlled-beta outside the validated Windows/NVIDIA path. Restricted
+Online and Strict Offline are application policies, not machine-wide firewall
+or air-gap guarantees; unrelated Windows processes and integrations can still
+use the network.
+
 - Open WebUI requires a local login.
 - The agent API uses a package-local static key and binds to localhost port 8001 through Docker Desktop. Do not expose ports 3000, 3001, 3002, 3003, 8001, or 11434 through router forwarding, public tunnels, or permissive firewall rules.
 - Only the `workspace` directory is mounted into the agent container.
@@ -68,7 +75,7 @@ intended for a single-user local workstation.
   Workbench runtime history is excluded from normal backups.
 ## Public release and signing controls
 
-The repository must never contain a signing private key, PFX, password, or
+The repository does not contain and must not contain a signing private key, PFX, password, or
 personal certificate-store export. The checked-in certificate (if present) is
 public verification material only and cannot sign executables without its
 private key. If a private key was ever exposed, rotate it and treat previous

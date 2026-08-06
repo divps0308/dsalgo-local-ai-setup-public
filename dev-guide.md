@@ -23,6 +23,22 @@ non-Windows compatibility remain validation work. Catalog values are planning
 estimates until measured on the target backend. See [`to-do.md`](to-do.md) and
 decision D-039 before describing this as a production-wide installer.
 
+## Independent audit disposition
+
+An independent review rated local capability and the security architecture
+strong for the intended Windows workstation, while rating installation,
+reliability confidence, and documentation release readiness as moderate. Treat
+that assessment as planning input, not as a compatibility claim. The release
+bar is a blocking preflight/dry-run for free disk, selected downloads,
+rollback headroom, WSL2/Docker readiness, NVIDIA/Ollama viability, role
+coverage, and resources; post-install runtime/model-load/health/tool-call and
+document checks where applicable; a versioned compatibility matrix; and
+actionable health diagnostics that do not expose secrets.
+
+Workbench tasks currently select enabled sample or custom Agent Studio agents
+by stable ID and use the selected agent's backing model. Older role-only notes
+are obsolete.
+
 ## 1. Project goals and scope
 
 The project turns one Windows 11 workstation into a local AI environment with:
@@ -47,14 +63,14 @@ non-goals unless a future decision changes scope.
 | `README.md` | Everyone | Concise landing page, quick start, URLs, and guide links |
 | `user-guide.md` | Operators and beginners | Installation, configuration, usage, backup, recovery, and troubleshooting |
 | `dev-guide.md` | Contributors | Architecture, source code, APIs, development, testing, and commits |
-| `agentic-dev-instructions.md` | Coding agents | Persistent invariants, security rules, documentation contract, hooks, and validation |
+| `agentic-dev-instructions.md` | Maintainers and development tooling | Persistent invariants, security rules, documentation contract, hooks, and validation |
 | `docs/PROJECT_CONTEXT.md` | Maintainers | Mission, design history, system map, scope, and enhancement priorities |
 | `decision-log.md` | Maintainers | Accepted and superseded technical/product decisions with rationale |
 | `to-do.md` | Maintainers | Known limitations, gaps, tradeoffs, and future work |
 | `CHANGELOG.md` | Users and maintainers | Versioned user-visible changes and resolved limitations |
 | `SECURITY.md` | Users and security reviewers | Threat model and vulnerability reporting |
 | `.env.example` | Operators and developers | Public environment-variable contract without secrets |
-| `AGENTS.md` | Repository coding agents | Repository-specific execution rules; kept aligned with the reusable agent instructions |
+| `AGENTS.md` | Repository maintainers and contributors | Repository-specific engineering standards; kept aligned with the reusable maintainer standards |
 
 Documentation changes are part of implementation, not a later cleanup task.
 
@@ -465,10 +481,13 @@ Workbench sends Ollama the native tool schema and normally consumes structured
 `message.tool_calls`. For compatibility with smaller local models, if Ollama
 returns no native tool calls, the backend may recover one exact JSON object with
 `name` and `arguments` from assistant text, including a fenced JSON block. The
-name must match an existing Workbench tool and the arguments must be a JSON
-object; malformed, unknown, or multi-action text remains ordinary assistant
-output. Recovered requests enter the same project-containment, operating-mode,
-command allow-list, and approval-gated execution path as native tool calls.
+name and complete argument object are validated against the controller-owned
+tool schema before execution. A narrow, deterministic compatibility map
+normalizes unambiguous argument aliases used by other coding-tool conventions.
+Invalid calls receive a structured protocol error and up to three repair turns;
+they never reach a tool implementation. Recovered requests enter the same
+project-containment, operating-mode, command allow-list, focused-edit, and
+approval-gated execution path as native tool calls.
 
 ### Change-task sequence
 
@@ -719,6 +738,40 @@ This prevents privileged inheritance by native high-trust services.
 Use database-native backup tools for any separately deployed durable services.
 
 ## 17. Development patterns
+
+### Workbench model protocol
+
+The Developer Workbench treats model output as untrusted data. Native Ollama
+`tool_calls` are accepted only when they name a registered Workbench tool and
+carry JSON-object arguments. Models that serialize a call as text may use the
+narrow compatibility envelope below; arbitrary prose is never executed:
+
+```json
+{"version":1,"type":"tool_call","name":"search_files","arguments":{"query":"TODO","path":".","max_results":100}}
+```
+
+Tool results are sent back as versioned JSON envelopes with an explicit `ok`
+field. In Goal mode, a prose plan without a structured tool call is progress,
+not completion. The controller requests continuation, rejects no-op and likely
+whole-file replacement proposals, and requires post-change inspection or a
+successful verification command plus a final conclusion. Repeated invalid
+calls, identical actions, long no-progress tool sequences, and dependency loops end
+in an explicit incomplete state. A model's configured `maxSteps` is honored
+within the defensive upper bound, but a high step limit cannot make a model
+reason correctly.
+Goal requests ask Ollama for JSON-formatted responses when the runtime supports
+that option. Older Ollama versions are retried once without the format hint;
+the Workbench still applies the same validation and approval boundary.
+
+Completion claims are not verification. Claim-only commands such as `echo task
+complete` and `Write-Host "changes completed"` are rejected before approval, and
+semantic variants share a duplicate fingerprint. The no-progress budget resets
+only after a successful file mutation, a recognized build/test/verification
+command, or an inspection after a mutation. A request mentioning compilation,
+build, testing, or verification requires successful build/test evidence; a diff
+alone is insufficient. A completion claim without that evidence receives one
+repair request, then ends as `incomplete` with the diagnostic: `The model
+produced completion prose without executable verification.`
 
 ### Adding a model role
 

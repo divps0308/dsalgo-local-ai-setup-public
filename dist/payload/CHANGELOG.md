@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+- Added a conservative cross-model tool-call compatibility parser. Explicit
+  allow-listed calls emitted in `tool_code`/code fences or simple JSON are
+  recovered into the existing permission, runtime-policy, and execution path;
+  arbitrary prose is never executed.
+
+- Tightened Goal completion accounting: claim-only commands are rejected and
+  semantic duplicates are detected; progress resets only on meaningful mutation,
+  recognized verification, or post-change inspection. Compilation requests now
+  require successful build/test evidence, with one repair for unsupported
+  completion prose before an explicit incomplete result.
+
+- Documented the independent audit disposition: Windows/NVIDIA is the current
+  validated baseline, while preflight resource gates, post-install checks,
+  broader hardware validation, lifecycle recovery, and documentation
+  reconciliation remain release-bar work.
+- Clarified that Workbench tasks use enabled sample/custom agents and their
+  configured backing models; obsolete role-only notes are superseded.
+- Hardened Goal-mode execution: known non-tool-calling models are rejected,
+  fenced or empty proposed file content is refused, and continuation prompts
+  require the next structured tool call instead of another prose proposal.
+- Added controller-owned tool argument validation, deterministic cross-model
+  aliases, bounded protocol-repair turns, structured tool-result status, a
+  no-progress tool-loop guard, and post-change verification requirements.
+  Malformed model requests now end with actionable protocol diagnostics instead
+  of raw argument errors or accidental execution.
+
+- Removed the obsolete `context_for_codex.md` file and unreferenced legacy
+  component-management wrappers (`Manage-*`, `Start-*`, `Stop-*`, and
+  `Update.ps1`). The documented lifecycle commands remain unchanged.
+- Workbench now recovers narrowly formatted `{ "name": ..., "arguments": ... }`
+  JSON tool requests emitted as assistant text by small Ollama models, then
+  routes them through the existing tool allow-list and approval gates.
 - Fixed the installer wizard to report the expected Windows restart after enabling WSL and Virtual Machine Platform instead of showing an unavailable exit-code failure.
 - Updated restart guidance to direct users to rerun `Install.exe` after signing in.
 - Added automatic WSL kernel/client update before WSL shutdown during installation.
@@ -125,8 +157,8 @@
   recommendations, live progress, errors, and completion.
 - Excluded the repository-local pnpm store and Python bytecode caches from Git
   so first-time publication does not include machine-generated dependencies.
-- Updated operator commands for the renamed
-  `C:\self-hosted-setup\dsalgo-local-ai-setup` source directory.
+- Updated operator commands for the renamed source directory; commands now use
+  the directory selected by the operator rather than a fixed machine path.
 - Verified lifecycle code derives its root from script location and documented
   the intentional stable Compose identity, which preserves
   existing named-volume data across the directory rename.

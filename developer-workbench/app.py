@@ -224,6 +224,89 @@ def unified_patch(relative: str, before: str, after: str) -> str:
     ) or "(No textual change)"
 
 
+def broad_rewrite_allowed(prompt: str) -> bool:
+    return bool(re.search(r"(?i)\b(rewrite|replace|re-create|regenerate|migrate|refactor the entire|rewrite the entire|replace the whole)\b", prompt or ""))
+
+
+def focused_edit_violation(before: str, after: str, prompt: str) -> bool:
+    """Reject likely whole-file replacement unless the user requested it."""
+    if not before.strip() or broad_rewrite_allowed(prompt):
+        return False
+    before_lines = before.splitlines()
+    after_lines = after.splitlines()
+    if len(before_lines) < 20:
+        return False
+    similarity = difflib.SequenceMatcher(None, before_lines, after_lines).ratio()
+    return similarity < 0.35
+
+
+COMPLETION_CLAIM_WORDS = re.compile(
+    r"(?i)\b(?:task|change|changes|code|console message|compilation|build|tests?)\b.*\b(?:complete|completed|finished|successfully|verified|no further)\b"
+)
+VERIFICATION_REQUEST_WORDS = re.compile(
+    r"(?i)\b(?:compile|compilation|build|test|tests|testing|verify|verification|lint|format|check)\b"
+)
+
+
+def command_fingerprint(command: str) -> str:
+    if is_claim_only_command(command):
+        return "completion-claim"
+    """Normalize command wording for semantic duplicate detection."""
+    value = re.sub(r"(?i)^\s*(?:powershell(?:\.exe)?\s+)?(?:-command\s+)?", "", command or "")
+    value = re.sub(r"(?i)\b(?:the task|this task|the change|the code|the console message)\b", "task", value)
+    value = re.sub(r"(?i)\b(?:has been|was|is|will be)\b", "", value)
+    value = re.sub(r"(?i)\b(?:successfully|fully|now|just|already)\b", "", value)
+    value = re.sub(r"(?i)\b(?:added|applied|completed|complete|finished|verified|done)\b", "complete", value)
+    value = re.sub(r"[\"'`.;:!?(),]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip().lower()
+
+
+def is_claim_only_command(command: str) -> bool:
+    """Return true for shell commands that only print an unverified claim."""
+    normalized = re.sub(r"\s+", " ", (command or "").strip().lower())
+    return bool(
+        re.match(r"(?i)^(?:echo|write-host|write-output|printf|print)\b", command or "")
+        and COMPLETION_CLAIM_WORDS.search(normalized)
+    )
+
+
+def verification_kind(command: str) -> str | None:
+    """Classify commands that can provide deterministic verification evidence."""
+    normalized = re.sub(r"\s+", " ", (command or "").strip().lower())
+    if is_claim_only_command(command):
+        return None
+    if re.search(r"\bgit\s+(?:diff|status)\b", normalized):
+        return "inspection"
+    if re.search(r"(?:^|\s)(?:mvnw(?:\.cmd)?|mvn)\s+.*\b(?:compile|test|verify|package|install)\b", normalized):
+        return "build"
+    if re.search(r"(?:^|\s)(?:gradlew(?:\.bat)?|gradle)\s+.*\b(?:build|test|check)\b", normalized):
+        return "build"
+    if re.search(r"(?:^|\s)(?:npm|pnpm|yarn)\s+.*\b(?:build|test|check|lint)\b", normalized):
+        return "build"
+    if re.search(r"(?:^|\s)(?:dotnet)\s+.*\b(?:build|test)\b", normalized):
+        return "build"
+    if re.search(r"(?:^|\s)(?:pytest|cargo\s+(?:test|build|check)|go\s+(?:test|build))\b", normalized):
+        return "build"
+    return None
+
+
+def prompt_requires_verification(prompt: str) -> bool:
+    return bool(VERIFICATION_REQUEST_WORDS.search(prompt or ""))
+
+
+def has_successful_required_verification(task: dict[str, Any], prompt: str) -> bool:
+    required = prompt_requires_verification(prompt)
+    for event in task.get("events", []):
+        if event.get("kind") != "command" or not isinstance(event.get("content"), dict):
+            continue
+        if int(event["content"].get("exitCode", -1)) != 0:
+            continue
+        kind = verification_kind(str(event["content"].get("command", "")))
+        if kind == "build" or (kind == "inspection" and not required):
+            return True
+    return False
+
+
 TOOLS = [
     {
         "type": "function",
@@ -333,7 +416,133 @@ TOOLS = [
     },
 ]
 
+for tool_definition in TOOLS:
+    # Make the schema sent to Ollama match the controller's strict validation.
+    # Models then receive an explicit signal that invented arguments are invalid.
+    tool_definition["function"]["parameters"]["additionalProperties"] = False
+
 TOOL_NAMES = {tool["function"]["name"] for tool in TOOLS}
+PROTOCOL_VERSION = 1
+MAX_PROTOCOL_REPAIRS = 3
+
+# Models from different providers sometimes use familiar argument names from
+# other coding tools. Translate only aliases whose meaning is unambiguous; the
+# canonical schema below remains the sole execution contract.
+TOOL_ARGUMENT_ALIASES: dict[str, dict[str, str]] = {
+    "list_files": {"base_dir": "path", "directory": "path", "max_results": "max_entries"},
+    "read_file": {"file_path": "path", "filename": "path"},
+    "search_files": {
+        "content_pattern": "query",
+        "search_term": "query",
+        "base_dir": "path",
+        "directory": "path",
+        "limit": "max_results",
+    },
+    "propose_write_file": {"file_path": "path", "description": "reason"},
+    "propose_delete_file": {"file_path": "path", "description": "reason"},
+    "propose_command": {"cmd": "command", "description": "reason", "timeout": "timeout_seconds"},
+}
+
+
+def tool_schema(name: str) -> dict[str, Any]:
+    item = next((tool for tool in TOOLS if tool["function"]["name"] == name), None)
+    return item["function"]["parameters"] if item else {}
+
+
+def normalize_and_validate_tool_call(call: Any) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Normalize one untrusted model action and validate its complete schema."""
+    if not isinstance(call, dict):
+        return None, {"code": "invalid_tool_call", "message": "Tool call must be a JSON object."}
+    function = call.get("function") if isinstance(call.get("function"), dict) else call
+    name = function.get("name") or function.get("type")
+    if name not in TOOL_NAMES:
+        return None, {"code": "unknown_tool", "message": f"Unknown Workbench tool: {name!r}."}
+    arguments = function.get("arguments", {})
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except json.JSONDecodeError as exc:
+            return None, {"code": "invalid_json", "tool": name, "message": str(exc)}
+    if not isinstance(arguments, dict):
+        return None, {"code": "invalid_arguments", "tool": name, "message": "Tool arguments must be a JSON object."}
+
+    aliases = TOOL_ARGUMENT_ALIASES.get(name, {})
+    translated: dict[str, Any] = {}
+    used_aliases: dict[str, str] = {}
+    for key, value in arguments.items():
+        canonical = aliases.get(key, key)
+        if canonical in translated and canonical != key:
+            continue
+        translated[canonical] = value
+        if canonical != key:
+            used_aliases[key] = canonical
+
+    if name == "search_files" and "content_pattern" in used_aliases and isinstance(translated.get("query"), str):
+        # search_files is deliberately literal. Remove only regex escaping of
+        # punctuation when a model used the content_pattern compatibility
+        # alias; do not otherwise reinterpret or execute a regular expression.
+        translated["query"] = re.sub(r"\\([()[\]{}.+*?^$|])", r"\1", translated["query"])
+
+    # A common search shape includes a file glob plus content_pattern. The
+    # current search tool searches text recursively, so the glob is redundant
+    # and safe to omit. Other unknown fields remain validation failures.
+    ignored: list[str] = []
+    if name == "search_files" and "pattern" in translated and "query" in translated:
+        translated.pop("pattern")
+        ignored.append("pattern")
+
+    schema = tool_schema(name)
+    properties = schema.get("properties", {})
+    required = schema.get("required", [])
+    missing = [key for key in required if key not in translated or translated[key] in (None, "")]
+    unsupported = sorted(set(translated) - set(properties))
+    type_errors: list[str] = []
+    python_types = {"string": str, "integer": int, "boolean": bool, "object": dict}
+    for key, value in translated.items():
+        expected = properties.get(key, {}).get("type")
+        if expected == "integer" and isinstance(value, str) and re.fullmatch(r"[+-]?\d+", value.strip()):
+            translated[key] = int(value)
+            value = translated[key]
+        elif expected == "boolean" and isinstance(value, str) and value.strip().lower() in {"true", "false"}:
+            translated[key] = value.strip().lower() == "true"
+            value = translated[key]
+        expected_type = python_types.get(expected)
+        if expected_type and (not isinstance(value, expected_type) or expected == "integer" and isinstance(value, bool)):
+            type_errors.append(f"{key} must be {expected}")
+    if missing or unsupported or type_errors:
+        return None, {
+            "code": "invalid_arguments",
+            "tool": name,
+            "message": "Tool arguments do not match the Workbench schema.",
+            "missing": missing,
+            "unsupported": unsupported,
+            "typeErrors": type_errors,
+            "expected": {"required": required, "properties": sorted(properties)},
+        }
+    return {
+        "type": "function",
+        "function": {"name": name, "arguments": translated},
+        "normalization": {"aliases": used_aliases, "ignored": ignored},
+    }, None
+
+
+def protocol_error_message(error: dict[str, Any]) -> str:
+    return json.dumps(
+        {"version": PROTOCOL_VERSION, "type": "protocol_error", **error},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
+def protocol_contract_summary() -> str:
+    contract: dict[str, Any] = {}
+    for name in sorted(TOOL_NAMES):
+        schema = tool_schema(name)
+        contract[name] = {
+            "required": schema.get("required", []),
+            "allowed": sorted(schema.get("properties", {})),
+        }
+    return json.dumps(contract, ensure_ascii=False, separators=(",", ":"))
 
 
 def extract_text_tool_call(content: Any) -> dict[str, Any] | None:
@@ -353,13 +562,81 @@ def extract_text_tool_call(content: Any) -> dict[str, Any] | None:
             value = json.loads(candidate)
         except json.JSONDecodeError:
             continue
-        if not isinstance(value, dict) or set(value) - {"name", "arguments"}:
+        if not isinstance(value, dict):
             continue
-        name = value.get("name")
-        arguments = value.get("arguments", {})
+        # Some Ollama models emit the tool request as {type, ...} (often
+        # inside a fenced block) instead of the OpenAI/Ollama {name,
+        # arguments} envelope. Normalize only the documented Workbench
+        # tools and their exact argument aliases; never execute arbitrary
+        # JSON emitted as assistant text.
+        if value.get("version") == PROTOCOL_VERSION and value.get("type") == "tool_call" and "name" in value:
+            name = value.get("name")
+            arguments = value.get("arguments", {})
+        elif "name" in value and not (set(value) - {"name", "arguments"}):
+            name = value.get("name")
+            arguments = value.get("arguments", {})
+        elif "type" in value and value.get("type") in TOOL_NAMES:
+            name = value.get("type")
+            arguments = {k: v for k, v in value.items() if k != "type"}
+            aliases = {"file_path": "path", "description": "reason"}
+            arguments = {aliases.get(k, k): v for k, v in arguments.items()}
+            raw_content = arguments.get("content")
+            if isinstance(raw_content, str):
+                fenced = re.fullmatch(r"\s*```[^\n]*\n(.*?)\n```\s*", raw_content, flags=re.DOTALL)
+                if fenced:
+                    arguments["content"] = fenced.group(1)
+        else:
+            continue
         if name not in TOOL_NAMES or not isinstance(arguments, dict):
             continue
         return {"type": "function", "function": {"name": name, "arguments": arguments}}
+    return None
+
+
+def normalize_tool_call(call: Any) -> dict[str, Any] | None:
+    """Normalize native or compatibility tool calls at the trust boundary.
+
+    Model output is untrusted data. Only known Workbench tools with object
+    arguments are admitted; everything else remains ordinary assistant text
+    and can never be executed implicitly.
+    """
+    normalized, _ = normalize_and_validate_tool_call(call)
+    return normalized
+
+
+def protocol_tool_result(name: str, output: str) -> str:
+    """Return a stable JSON envelope for the next model turn."""
+    try:
+        result: Any = json.loads(output)
+    except (TypeError, json.JSONDecodeError):
+        result = output
+    ok = not (isinstance(result, dict) and result.get("type") == "protocol_error")
+    return json.dumps(
+        {"version": PROTOCOL_VERSION, "type": "tool_result", "tool": name, "ok": ok, "result": result},
+        ensure_ascii=False,
+    )
+
+
+def parse_protocol_response(content: Any) -> dict[str, Any] | None:
+    """Parse the explicit v1 assistant envelope without interpreting prose."""
+    if not isinstance(content, str) or not content.strip():
+        return None
+    candidate = content.strip()
+    fenced = re.fullmatch(r"```(?:json)?\s*(\{.*\})\s*```", candidate, flags=re.I | re.S)
+    if fenced:
+        candidate = fenced.group(1)
+    try:
+        value = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(value, dict) or value.get("version") != PROTOCOL_VERSION:
+        return None
+    kind = value.get("type")
+    if kind == "tool_call":
+        return normalize_tool_call(value)
+    if kind in {"progress", "complete", "blocked"}:
+        message = value.get("message", value.get("summary", ""))
+        return {"type": kind, "message": str(message)}
     return None
 
 
@@ -389,6 +666,7 @@ def available_agents() -> list[dict[str, Any]]:
             "modelTag": str(item.get("modelTag", "")).strip(),
             "modelRole": str(item.get("modelRole") or item.get("role") or "general"),
             "maxSteps": max(1, min(int(item.get("maxSteps", MAX_AGENT_STEPS)), 1000)),
+            "toolCalling": bool(item.get("toolCalling", True)),
         })
     return result
 
@@ -439,14 +717,31 @@ def ollama_chat(model: str, cfg: dict[str, Any], messages: list[dict[str, Any]],
             "temperature": cfg.get("temperature", 0.2),
         },
     }
+    if work_mode == "goal" and cfg.get("structuredOutput", True):
+        payload["format"] = "json"
     request = urllib.request.Request(
         "http://127.0.0.1:11434/api/chat",
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=900) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=900) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        # Older Ollama releases may reject the format field. Retry once
+        # without it; tool execution remains protected by validation below.
+        if "format" not in payload:
+            raise
+        payload.pop("format", None)
+        fallback = urllib.request.Request(
+            "http://127.0.0.1:11434/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(fallback, timeout=900) as response:
+            return json.loads(response.read().decode("utf-8"))
 
 
 def add_event(task_id: str, kind: str, content: Any) -> None:
@@ -459,25 +754,52 @@ def add_event(task_id: str, kind: str, content: Any) -> None:
         STATE.persist_tasks()
 
 
-def completion_quality(task: dict[str, Any], content: str) -> tuple[bool, str]:
+def completion_quality(task: dict[str, Any], content: str, prompt: str = "") -> tuple[bool, str]:
     """Require evidence that a task actually finished or explicitly needed no change."""
     events = task.get("events", [])
     normalized = content.lower()
-    if any(event.get("kind") == "action" for event in events):
+    actions = [event for event in events if event.get("kind") == "action"]
+    if actions:
         # A Goal task may perform many approved actions. One action followed by
         # "next"/"we will proceed" is progress, not completion.
         has_conclusion = re.search(r"\b(completed|complete|finished|implemented|verified|all requested|no further changes)\b", normalized)
         is_continuing = re.search(r"\b(next|proceed|continue|let's start|will now|remaining)\b", normalized)
-        if has_conclusion and not is_continuing:
+        last_action = max(float(event.get("time", 0)) for event in actions)
+        verified_after_change = False
+        for event in events:
+            if float(event.get("time", 0)) <= last_action:
+                continue
+            if event.get("kind") == "command" and isinstance(event.get("content"), dict):
+                verified_after_change = (
+                    int(event["content"].get("exitCode", -1)) == 0
+                    and verification_kind(str(event["content"].get("command", ""))) is not None
+                    and (not prompt_requires_verification(prompt) or verification_kind(str(event["content"].get("command", ""))) == "build")
+                )
+            if event.get("kind") == "tool" and isinstance(event.get("content"), dict):
+                verified_after_change = (
+                    not prompt_requires_verification(prompt)
+                    and event["content"].get("name") in {"read_file", "search_files", "git_diff", "git_status"}
+                )
+            if verified_after_change:
+                break
+        if has_conclusion and not is_continuing and verified_after_change:
             return True, ""
+        if not verified_after_change:
+            return False, "The requested files changed, but the agent has not inspected the resulting state or run a successful verification command after the last change."
         return False, "The Goal agent stopped after partial progress; it must continue until the requested goal is implemented and verified."
-    for event in events:
-        if event.get("kind") == "command" and isinstance(event.get("content"), dict):
-            if int(event["content"].get("exitCode", -1)) == 0:
-                return True, ""
-    no_change = re.search(r"\b(no changes? (are )?needed|no changes? (were )?made|nothing (to|needed to) change)\b", normalized)
-    if no_change:
+    if has_successful_required_verification(task, prompt):
         return True, ""
+    no_change = re.search(r"\b(no changes? (are )?needed|no changes? (were )?made|nothing (to|needed to) change)\b", normalized)
+    inspected = any(
+        event.get("kind") == "tool"
+        and isinstance(event.get("content"), dict)
+        and event["content"].get("name") in READ_ONLY_TOOL_NAMES
+        for event in events
+    )
+    if no_change and inspected:
+        return True, ""
+    if no_change:
+        return False, "The model claimed no change was needed without first inspecting the approved project."
     return False, "The model stopped without a patch, successful command/test result, or explicit no-change conclusion."
 
 
@@ -579,7 +901,25 @@ def execute_tool(task_id: str, project: dict[str, Any], name: str, args: dict[st
         target = safe_project_path(project, relative)
         before = read_text(target) if target.exists() else ""
         after = str(args["content"])
+        # Models frequently wrap complete-file output in Markdown fences. That
+        # is a proposal format, not valid file content, and must be rejected
+        # before approval so fenced text cannot be written into source files.
+        stripped = after.strip()
+        if re.match(r"^```(?:[A-Za-z0-9_+-]+)?\s*\r?\n", stripped) and stripped.endswith("```"):
+            return "Rejected proposed file content: remove Markdown code fences and return only the file contents."
+        if not stripped:
+            return "Rejected proposed file content: the file content cannot be empty."
+        with STATE.lock:
+            task_prompt = str(STATE.tasks.get(task_id, {}).get("prompt", ""))
+        if focused_edit_violation(before, after, task_prompt):
+            return (
+                "Rejected broad file replacement: preserve unrelated code and make a focused edit. "
+                "Read the current file, change only the relevant section, and resubmit the complete "
+                "updated file. A full rewrite requires an explicit user request."
+            )
         patch = unified_patch(relative, before, after)
+        if patch == "(No textual change)":
+            return f"No change needed: {relative} already contains the proposed content."
         approved, _ = request_approval(
             task_id,
             "write_file",
@@ -612,6 +952,12 @@ def execute_tool(task_id: str, project: dict[str, Any], name: str, args: dict[st
         return f"Deleted {relative}"
     if name == "propose_command":
         command = str(args["command"])
+        if is_claim_only_command(command):
+            return (
+                "Rejected completion-only command: this command only prints an "
+                "unverified claim. Use a real build, test, or inspection command "
+                "and report its structured result."
+            )
         mode = load_policy()["mode"]
         if mode == "strict-offline":
             return "Command blocked by Strict Offline operating mode."
@@ -649,6 +995,11 @@ def run_agent_task(task_id: str) -> None:
         if not agent_id:
             raise ValueError("Task agent is required; select an enabled agent in Local Agent Studio")
         model, cfg, agent = model_for_agent(agent_id)
+        if work_mode == "goal" and cfg.get("toolCalling") is False:
+            raise ValueError(
+                f"Selected backing model '{model}' is not configured for structured tool calling. "
+                "Use a tool-capable model for Goal mode, or use Ask/Plan mode."
+            )
         max_steps = max(1, min(int(agent.get("maxSteps", MAX_AGENT_STEPS)), 1000))
         system = (
             "You are a local Windows coding agent operating on one user-approved project root: "
@@ -663,6 +1014,24 @@ def run_agent_task(task_id: str) -> None:
             "Approve/Reject card. In Goal mode, continue pursuing the requested change until it is "
             "implemented or a concrete blocking reason is recorded."
         )
+        if work_mode == "goal":
+            system += (
+                " For every existing file, make the smallest focused change possible. Preserve all "
+                "unrelated code, imports, comments, formatting, and configuration. Never replace or "
+                "regenerate an entire file merely to change one method or section. A full rewrite is "
+                "allowed only when the user's request explicitly asks for a rewrite, replacement, "
+                "migration, or regeneration. Before propose_write_file, read the current file and "
+                "return its complete content with only the requested section changed."
+            )
+        system += (
+            " Workbench protocol v1 is active. Tool calls must be structured tool_calls "
+            "with exactly one known function and JSON object arguments. If your client cannot "
+            "populate tool_calls, return exactly one JSON object of the form "
+            "{\"version\":1,\"type\":\"tool_call\",\"name\":\"<known tool>\",\"arguments\":{...}}. "
+            "Never describe an actionable tool call as prose. Tool results arrive as "
+            "{version:1,type:tool_result,tool,result}; interpret them as authoritative. "
+            "The exact tool argument contract is: " + protocol_contract_summary()
+        )
         if work_mode == "ask":
             system += " This is ASK mode: only inspect/read/search; answer the question and do not propose edits or commands."
         elif work_mode == "plan":
@@ -673,6 +1042,11 @@ def run_agent_task(task_id: str) -> None:
         ]
         last_no_tool_result = ""
         no_tool_repeats = 0
+        last_tool_signature = ""
+        repeated_tool_calls = 0
+        protocol_repairs = 0
+        steps_without_progress = 0
+        completion_claim_repairs = 0
         add_event(task_id, "status", f"Started with {agent.get('name', agent_id)} ({model})")
         for _ in range(max_steps):
             if STATE.cancel_events[task_id].is_set():
@@ -682,13 +1056,63 @@ def run_agent_task(task_id: str) -> None:
             response = ollama_chat(model, cfg, messages, work_mode)
             assistant = response.get("message", {})
             messages.append(assistant)
-            calls = assistant.get("tool_calls") or []
+            calls: list[dict[str, Any]] = []
+            validation_errors: list[dict[str, Any]] = []
+            native_calls = assistant.get("tool_calls") or []
+            if len(native_calls) > 1:
+                validation_errors.append({
+                    "code": "multiple_tool_calls",
+                    "message": "Goal mode accepts exactly one tool call per model turn.",
+                })
+                native_calls = []
+            for item in native_calls:
+                normalized, validation_error = normalize_and_validate_tool_call(item)
+                if normalized:
+                    calls.append(normalized)
+                elif validation_error:
+                    validation_errors.append(validation_error)
             if not calls:
-                text_call = extract_text_tool_call(assistant.get("content", ""))
-                if text_call:
-                    calls = [text_call]
+                envelope = parse_protocol_response(assistant.get("content", ""))
+                if envelope and envelope.get("type") == "function":
+                    calls = [envelope]
                     messages[-1] = {**assistant, "tool_calls": calls}
-                    add_event(task_id, "status", "Recovered a JSON tool request emitted as assistant text.")
+                    add_event(task_id, "status", "Accepted a validated protocol-v1 tool call.")
+                elif envelope and envelope.get("type") in {"progress", "complete", "blocked"}:
+                    assistant["content"] = envelope.get("message", "")
+                    messages[-1] = assistant
+                    if envelope.get("type") == "blocked":
+                        add_event(task_id, "error", assistant["content"])
+                        STATE.update_task(task_id, status="incomplete", error=assistant["content"], result=assistant["content"])
+                        return
+                text_call = extract_text_tool_call(assistant.get("content", ""))
+                if not calls and text_call:
+                    normalized, validation_error = normalize_and_validate_tool_call(text_call)
+                    if normalized:
+                        calls = [normalized]
+                        messages[-1] = {**assistant, "tool_calls": calls}
+                        detail = normalized.get("normalization", {})
+                        suffix = " Known cross-model argument aliases were normalized." if detail.get("aliases") or detail.get("ignored") else ""
+                        add_event(task_id, "status", "Recovered a JSON tool request emitted as assistant text." + suffix)
+                    elif validation_error:
+                        validation_errors.append(validation_error)
+            if validation_errors and not calls:
+                protocol_repairs += 1
+                error = validation_errors[0]
+                repair = protocol_error_message(error)
+                add_event(task_id, "status", f"Repairing invalid model tool request ({protocol_repairs}/{MAX_PROTOCOL_REPAIRS}): {error.get('message', 'invalid protocol')}")
+                if protocol_repairs >= MAX_PROTOCOL_REPAIRS:
+                    blocker = (
+                        "The selected model could not produce a valid Workbench tool request after "
+                        f"{MAX_PROTOCOL_REPAIRS} repair attempts. Last protocol error: {repair}"
+                    )
+                    add_event(task_id, "error", blocker)
+                    STATE.update_task(task_id, status="incomplete", error=blocker)
+                    return
+                messages.append({
+                    "role": "user",
+                    "content": repair + " Return exactly one corrected protocol-v1 tool_call JSON object using only the required and allowed argument names; do not add prose.",
+                })
+                continue
             if not calls:
                 result = assistant.get("content", "")
                 add_event(task_id, "assistant", result)
@@ -706,12 +1130,33 @@ def run_agent_task(task_id: str) -> None:
                     return
                 with STATE.lock:
                     current = STATE.tasks[task_id]
-                valid, reason = completion_quality(current, result)
+                valid, reason = completion_quality(current, result, prompt)
                 if valid:
                     STATE.update_task(task_id, status="completed", result=result)
                     return
                 if work_mode == "goal":
                     normalized_result = re.sub(r"\s+", " ", result.strip().lower())
+                    completion_claim = bool(COMPLETION_CLAIM_WORDS.search(result or "")) and not re.search(
+                        r"(?i)\b(?:blocked|cannot|could not|unable)\b", result or ""
+                    )
+                    if completion_claim and not has_successful_required_verification(current, prompt):
+                        completion_claim_repairs += 1
+                        if completion_claim_repairs >= 2:
+                            blocker = "The model produced completion prose without executable verification."
+                            add_event(task_id, "error", blocker)
+                            STATE.update_task(task_id, status="incomplete", error=blocker, result=result)
+                            return
+                        add_event(task_id, "status", "Completion claim requires executable verification; requesting one repair.")
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                "The model produced completion prose without executable verification. "
+                                "Return exactly one structured Workbench tool call for the required "
+                                "build/test/inspection, or return a concrete BLOCKED response. Do not "
+                                "use echo, Write-Host, or other claim-only commands."
+                            ),
+                        })
+                        continue
                     if normalized_result and normalized_result == last_no_tool_result:
                         no_tool_repeats += 1
                     else:
@@ -743,10 +1188,14 @@ def run_agent_task(task_id: str) -> None:
                         "content": (
                             "This is Goal mode and the task is not complete yet. "
                             f"Completion check: {reason} Continue now: inspect the remaining "
-                            "scope, use the approval-gated tools for every required edit or "
-                            "command, verify the result, and do not stop with a plan or a "
-                            "partial-progress summary. Only finish after the full request is "
-                            "implemented and verified, or report a concrete blocker."
+                            "scope. Do not explain or propose the next action in prose. "
+                            "Invoke exactly one required structured tool now (read_file, "
+                            "search_files, propose_write_file, propose_command, or another "
+                            "allowed Workbench tool). For edits, send raw file content "
+                            "without Markdown fences; for commands, use propose_command so "
+                            "an approval card is created. Verify each change before moving "
+                            "on. Only finish after the full request is implemented and "
+                            "verified, or report a concrete blocker."
                         ),
                     })
                     continue
@@ -755,15 +1204,68 @@ def run_agent_task(task_id: str) -> None:
                 return
             if assistant.get("content"):
                 add_event(task_id, "assistant", assistant["content"])
+            protocol_repairs = 0
             for call in calls:
-                function = call.get("function", {})
-                name = function.get("name", "")
-                arguments = function.get("arguments", {})
-                if isinstance(arguments, str):
-                    arguments = json.loads(arguments)
-                output = execute_tool(task_id, project, name, arguments)
+                normalized, validation_error = normalize_and_validate_tool_call(call)
+                if not normalized:
+                    add_event(task_id, "error", protocol_error_message(validation_error or {"code": "invalid_tool_call"}))
+                    continue
+                function = normalized["function"]
+                name = function["name"]
+                arguments = normalized["function"]["arguments"]
+                signature_arguments = arguments
+                if name == "propose_command":
+                    signature_arguments = {**arguments, "command": command_fingerprint(str(arguments.get("command", "")))}
+                signature = json.dumps(
+                    {"name": name, "arguments": signature_arguments},
+                    sort_keys=True,
+                    ensure_ascii=False,
+                )
+                if signature == last_tool_signature:
+                    repeated_tool_calls += 1
+                else:
+                    last_tool_signature = signature
+                    repeated_tool_calls = 1
+                if repeated_tool_calls >= 3:
+                    blocker = "The agent repeated the same tool request three times without advancing the task. Review the proposed change and rerun with a narrower request."
+                    add_event(task_id, "error", blocker)
+                    STATE.update_task(task_id, status="incomplete", error=blocker)
+                    return
+                try:
+                    output = execute_tool(task_id, project, name, arguments)
+                except (OSError, ValueError, TypeError) as exc:
+                    output = protocol_error_message({"code": "tool_execution_error", "tool": name, "message": str(exc)})
+                    add_event(task_id, "error", f"{name} was not executed: {exc}")
                 add_event(task_id, "tool", {"name": name, "result": output[:10_000]})
-                messages.append({"role": "tool", "tool_name": name, "content": output})
+                messages.append({"role": "tool", "tool_name": name, "content": protocol_tool_result(name, output)})
+                made_progress = output.startswith(("Wrote ", "Deleted "))
+                if name == "propose_command":
+                    try:
+                        command_result = json.loads(output)
+                        command_text = str(arguments.get("command", ""))
+                        made_progress = (
+                            isinstance(command_result, dict)
+                            and int(command_result.get("exitCode", -1)) == 0
+                            and verification_kind(command_text) is not None
+                        )
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        made_progress = False
+                if name in READ_ONLY_TOOL_NAMES:
+                    with STATE.lock:
+                        has_action = any(event.get("kind") == "action" for event in STATE.tasks[task_id].get("events", []))
+                    made_progress = made_progress or has_action
+                if made_progress:
+                    steps_without_progress = 0
+                else:
+                    steps_without_progress += 1
+                if steps_without_progress >= 50:
+                    blocker = (
+                        "The agent used 50 consecutive tool calls without a successful change or command. "
+                        "The task was stopped to prevent an exploration, rejection, or execution-failure loop."
+                    )
+                    add_event(task_id, "error", blocker)
+                    STATE.update_task(task_id, status="incomplete", error=blocker)
+                    return
         result = f"Agent reached the configured {max_steps}-step limit before completing and verifying the request."
         add_event(task_id, "error", result)
         STATE.update_task(task_id, status="failed", error=result)
