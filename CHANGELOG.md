@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed the installer license lookup for extracted release bundles by locating
+  the canonical `LICENSE` file inside the adjacent `payload` directory.
+
 - Fixed release packaging to publish the complete `dist` directory, including
   the installer-required `payload` folder, as one extractable ZIP.
 
