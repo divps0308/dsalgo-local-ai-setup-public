@@ -815,3 +815,12 @@ the adjacent `payload` directory. Complete release bundles keep repository
 content under `payload`, so the installer must validate the license there
 before displaying the acceptance page.
 
+### D-067 - Derive WSL resources from detected hardware (2026-08-06)
+
+The installer now writes the WSL/Docker core profile from detected logical
+processors and system RAM. Comfortable reserves roughly 35% of RAM and half
+the logical processors; Aggressive reserves roughly 15% and permits all
+logical processors. Swap is derived from the selected memory limit and capped
+at 16 GB. Existing `.wslconfig` values continue to win during conservative
+merge.
+

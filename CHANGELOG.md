@@ -5,6 +5,10 @@
 - Fixed the installer license lookup for extracted release bundles by locating
   the canonical `LICENSE` file inside the adjacent `payload` directory.
 
+- Replaced the fixed 20 GB WSL memory profile with hardware- and allocation-
+  aware Comfortable/Aggressive recommendations for WSL memory, processors,
+  and swap. Existing `.wslconfig` values remain preserved.
+
 - Fixed release packaging to publish the complete `dist` directory, including
   the installer-required `payload` folder, as one extractable ZIP.
 
