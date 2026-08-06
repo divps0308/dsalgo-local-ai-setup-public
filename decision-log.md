@@ -808,3 +808,10 @@ The installer is intentionally distributed beside its payload rather than
 duplicating that payload inside each executable, so users must extract the
 bundle before launching `install.exe`.
 
+### D-066 - Resolve the license from the extracted payload (2026-08-06)
+
+The installer accepts the canonical `LICENSE` from either the release root or
+the adjacent `payload` directory. Complete release bundles keep repository
+content under `payload`, so the installer must validate the license there
+before displaying the acceptance page.
+

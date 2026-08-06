@@ -22,7 +22,12 @@ function Get-LicensePath {
   if(-not[string]::IsNullOrWhiteSpace($PSScriptRoot)){$roots+=@($PSScriptRoot,(Split-Path -Parent $PSScriptRoot))}
   try{$exeDir=Split-Path -Parent (Get-Process -Id $PID -ErrorAction Stop).MainModule.FileName;if(-not[string]::IsNullOrWhiteSpace($exeDir)){$roots+=@($exeDir,(Split-Path -Parent $exeDir))}}catch{}
   $roots+=$(Get-Location).Path
-  foreach($root in @($roots|Where-Object{-not[string]::IsNullOrWhiteSpace($_)}|Select-Object -Unique)){$candidate=Join-Path $root 'LICENSE';if(Test-Path -LiteralPath $candidate){return $candidate}}
+  foreach($root in @($roots|Where-Object{-not[string]::IsNullOrWhiteSpace($_)}|Select-Object -Unique)){
+    foreach($relativePath in @('LICENSE','payload\LICENSE')){
+      $candidate=Join-Path $root $relativePath
+      if(Test-Path -LiteralPath $candidate -PathType Leaf){return $candidate}
+    }
+  }
   throw 'The canonical LICENSE file could not be found in the packaged installer payload.'
 }
 
