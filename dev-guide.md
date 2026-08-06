@@ -958,8 +958,9 @@ repository variables: `SIGNING_CERT_PFX_B64` (the clipboard Base64 value) and
 The owner runs Actions â†’ Release â†’ Run workflow and supplies an existing tag
 such as `v1.0.0`. The workflow checks the owner identity and tag format,
 checks out that tag, imports the PFX only into the ephemeral Windows runner,
-runs the normal frontend/package/sign build, publishes the EXEs, checksum,
-verification certificate, and `VERIFY.md`, then removes the imported
+runs the normal frontend/package/sign build, packages the complete `dist`
+directory (including the required `payload` folder) as one ZIP, publishes that
+bundle, then removes the imported
 certificate and temporary PFX. The private key is not placed in the repository,
 release assets, logs, or artifacts. Rotate the PFX and GitHub secrets if it is
 ever exposed; previously signed releases should then be treated as legacy

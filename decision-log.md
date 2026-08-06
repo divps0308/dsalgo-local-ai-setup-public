@@ -800,3 +800,11 @@ authority, while `dev-guide.md` remains the architecture authority. Maintainer
 instructions, documentation maps, checklists, and user-facing links no longer
 reference the retired document.
 
+### D-065 - Publish releases as complete extracted bundles (2026-08-06)
+
+The release workflow publishes one ZIP containing all generated executables,
+verification files, certificate, and the installer-required `payload` folder.
+The installer is intentionally distributed beside its payload rather than
+duplicating that payload inside each executable, so users must extract the
+bundle before launching `install.exe`.
+

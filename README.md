@@ -164,6 +164,9 @@ for the current user if needed, packages and signs
 the GUI installer and lifecycle executables, and writes checksums and
 verification instructions to `dist`. The certificate is self-signed and not
 publicly trusted; SmartScreen or Unknown Publisher warnings are expected.
+The protected GitHub release workflow publishes the complete `dist` directory,
+including `payload`, as an extractable release ZIP. Extract the ZIP as a whole
+before running `install.exe`.
 
 ## Lifecycle summary
 
