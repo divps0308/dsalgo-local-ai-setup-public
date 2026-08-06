@@ -33,16 +33,16 @@ jobs:
           ref: ${{ inputs.tag }}
           fetch-depth: 0
 
+      - name: Install pnpm
+        shell: pwsh
+        run: npm install --global pnpm
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Install pnpm
-        shell: pwsh
-        run: npm install --global pnpm
 
       - name: Import protected signing certificate, build, and clean up
         shell: pwsh
@@ -63,9 +63,6 @@ jobs:
             $password = ConvertTo-SecureString $env:SIGNING_CERT_PASSWORD -AsPlainText -Force
             $cert = Import-PfxCertificate -FilePath $pfxPath -Password $password -CertStoreLocation 'Cert:\CurrentUser\My'
             if (-not $cert -or -not $cert.HasPrivateKey) { throw 'The protected PFX does not contain a private signing key.' }
-            if ($cert.Subject -ne 'CN=DSAlgo Local AI Setup Local Release Signing') {
-              throw "Unexpected signing certificate subject: $($cert.Subject)"
-            }
             if ($cert.Subject -ne 'CN=DSAlgo Local AI Setup Local Release Signing') {
               throw "Unexpected signing certificate subject: $($cert.Subject)"
             }
