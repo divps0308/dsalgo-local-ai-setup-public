@@ -82,9 +82,9 @@
   role configuration does not guarantee that every role has a task-specialized
   model. Only one conversational model is intended to be resident at a time;
   switching roles can cause model swaps, latency, and memory pressure.
-- Docker/WSL resource limits are not fully generated from each machine's
-  detected hardware. The static Compose core profile and WSL configuration
-  require validation on each target machine.
+- Docker/WSL resource sizing is now generated from detected RAM and logical
+  processors plus the Comfortable/Aggressive choice; low-memory and mixed
+  existing-`.wslconfig` validation remains outstanding.
 - The full installer journey, restart/resume behavior, prerequisite fallback,
   GPU placement, model downloads, and lifecycle shortcuts have not yet been
   automated across representative hardware profiles. Treat this release as
