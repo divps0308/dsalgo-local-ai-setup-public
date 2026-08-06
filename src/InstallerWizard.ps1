@@ -49,7 +49,17 @@ function Get-Hardware {
       if($adapter){$gpu=[string]$adapter.Name;if($adapter.AdapterRAM){$vram=[math]::Round([double]$adapter.AdapterRAM/1GB)}}
     }catch{}
   }
-  [pscustomobject]@{Cpu=$cpu;RamGiB=$ram;Gpu=$gpu;VramGiB=$vram}
+  $cpuCores=1
+  try{$cpuCores=[int]((Get-CimInstance Win32_Processor|Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum)}catch{}
+  [pscustomobject]@{Cpu=$cpu;CpuCores=[math]::Max(1,$cpuCores);RamGiB=$ram;Gpu=$gpu;VramGiB=$vram}
+}
+
+function Get-ResourceProfile($hardware,[string]$allocation){
+  $ramReserve=if($allocation-eq'Comfortable'){.35}else{.15}
+  $memory=[math]::Max(2,[math]::Floor($hardware.RamGiB*(1-$ramReserve)))
+  $processors=if($allocation-eq'Comfortable'){[math]::Max(2,[math]::Floor($hardware.CpuCores*.5))}else{[math]::Max(2,$hardware.CpuCores)}
+  $swap=[math]::Min(16,[math]::Max(2,[math]::Ceiling($memory*(if($allocation-eq'Comfortable'){.5}else{.75}))))
+  [ordered]@{dockerMemoryGB=[int]$memory;dockerProcessors=[int]$processors;dockerSwapGB=[int]$swap}
 }
 
 function Get-Catalog {
@@ -257,12 +267,13 @@ function Start-Installation {
   $general=@($chosen|Where-Object{$_.Tasks-contains'GeneralChat'}|Select-Object -First 1);if(-not$general){$general=@($chosen|Select-Object -First 1)}
   $coder=@($chosen|Where-Object{$_.Tasks-contains'Coding'}|Select-Object -First 1);if(-not$coder){$coder=$general}
   $reasoning=@($chosen|Where-Object{$_.Tasks-contains'Reasoning'}|Select-Object -First 1);if(-not$reasoning){$reasoning=$general}
-  $modelConfig=[ordered]@{schemaVersion=1;hardwareProfile=[ordered]@{gpu=$script:hardware.Gpu;vramMB=([int]$script:hardware.VramGiB*1024);systemRamGB=$script:hardware.RamGiB;reservedSystemRamGB=8;notes='Generated deterministically by install.exe.'};models=[ordered]@{
+  $resourceProfile=Get-ResourceProfile $script:hardware ([string]$allocation.SelectedItem)
+  $modelConfig=[ordered]@{schemaVersion=1;hardwareProfile=[ordered]@{gpu=$script:hardware.Gpu;vramMB=([int]$script:hardware.VramGiB*1024);systemRamGB=$script:hardware.RamGiB;reservedSystemRamGB=if($allocation.SelectedItem-eq'Comfortable'){[math]::Floor($script:hardware.RamGiB*.35)}else{[math]::Floor($script:hardware.RamGiB*.15)};notes='Generated deterministically by install.exe.'};models=[ordered]@{
     general=[ordered]@{ollamaTag=$general[0].Tag;displayName=$general[0].Name;role='general/tool agent';numCtx=[math]::Min(16384,[int]$general[0].Context);temperature=.55;keepAlive='5m';toolCalling=$true}
     coder=[ordered]@{ollamaTag=$coder[0].Tag;displayName=$coder[0].Name;role='coding/tool agent';numCtx=[math]::Min(16384,[int]$coder[0].Context);temperature=.2;keepAlive='10m';toolCalling=$true}
     reasoning=[ordered]@{ollamaTag=$reasoning[0].Tag;displayName=$reasoning[0].Name;role='reasoning/research agent';numCtx=[math]::Min(16384,[int]$reasoning[0].Context);temperature=.35;keepAlive='3m';toolCalling=$false}
     embedding=[ordered]@{ollamaTag='embeddinggemma:latest';displayName='EmbeddingGemma';role='embeddings';numCtx=2048;temperature=0;keepAlive='5m';toolCalling=$false}
-  };profiles=[ordered]@{core=[ordered]@{dockerMemoryGB=20;dockerProcessors=8;dockerSwapGB=8;default=$true}}}
+  };profiles=[ordered]@{core=[ordered]@{dockerMemoryGB=$resourceProfile.dockerMemoryGB;dockerProcessors=$resourceProfile.dockerProcessors;dockerSwapGB=$resourceProfile.dockerSwapGB;default=$true}}}
   $modelConfig|ConvertTo-Json -Depth 8|Set-Content (Join-Path $target 'config\models.json') -Encoding UTF8
   $agents=[ordered]@{mcpServers=@();agents=@(
     [ordered]@{id='sample-general';name='Sample General Conversation Agent';source='setup';modelRole='general';modelTag=$general[0].Tag;maxSteps=6;instructions='Provide helpful, accurate general conversation and everyday assistance.';enabled=$true;builtinTools=@('calculate','get_datetime');mcpServers=@()},
