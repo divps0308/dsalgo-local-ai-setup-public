@@ -146,7 +146,9 @@ The installer:
    continue with preserved values or abort to remediate it first.
 7. Shuts down WSL so the new resource limits take effect.
 8. Starts Docker Desktop and waits until Docker is ready.
-9. Creates `.env` with generated local credentials.
+9. Creates `.env` with generated local credentials and converts the Windows
+   system time zone to the IANA identifier used by Linux containers. Existing
+   user-selected `.env` values are preserved on later runs.
 10. Pulls the configured Ollama models unless `-SkipModels` is used.
 11. Builds the local project images.
 12. Creates containers but intentionally leaves the application stopped.
@@ -971,8 +973,6 @@ to stage selected files, then return to Workbench for inspection.
 
 - Architecture, APIs, diagrams, source layout, testing, and development:
   [dev-guide.md](dev-guide.md)
-- Design history and project mission:
-  [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md)
 - Known limitations:
   [to-do.md](to-do.md)
 - Accepted decisions:

@@ -11,7 +11,7 @@ services:
       OPENAI_API_KEY: ${AGENT_API_KEY}
       WEBUI_AUTH: "true"
       ENABLE_SIGNUP: "true"
-      TZ: ${TZ:-America/Chicago}
+      TZ: ${TZ:-Etc/UTC}
     volumes: ["open-webui-data:/app/backend/data"]
     depends_on:
       local-agent-gateway: {condition: service_healthy}
@@ -36,7 +36,7 @@ services:
       OAUTH_BROKER_URL: http://host.docker.internal:${OAUTH_BROKER_PORT:-3003}
       OAUTH_BROKER_TOKEN_FILE: /runtime/oauth-broker/token
       AGENT_WORKSPACE: /workspace
-      TZ: ${TZ:-America/Chicago}
+      TZ: ${TZ:-Etc/UTC}
     volumes:
       - ./config:/config:ro
       - ./runtime:/runtime:ro

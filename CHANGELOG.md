@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Removed obsolete references to the retired project-context document; the
+  README and development guide now carry the project mission, scope, and
+  architecture documentation contract.
+
+- Replaced the Chicago-specific container time-zone default with automatic
+  Windows-to-IANA detection during environment initialization. New installs
+  receive their system time zone in machine-local `.env`; existing explicit
+  `TZ` choices remain unchanged, and Compose falls back to UTC when no value is
+  supplied.
+
 - Added a conservative cross-model tool-call compatibility parser. Explicit
   allow-listed calls emitted in `tool_code`/code fences or simple JSON are
   recovered into the existing permission, runtime-policy, and execution path;
