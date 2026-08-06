@@ -68,15 +68,25 @@ jobs:
             Remove-Variable password -ErrorAction SilentlyContinue
           }
 
+      - name: Package complete release bundle
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $bundlePath = Join-Path $PWD "dist\DSAlgo-Local-AI-Setup-$env:RELEASE_TAG.zip"
+          Remove-Item -LiteralPath $bundlePath -Force -ErrorAction SilentlyContinue
+          $entries = @(Get-ChildItem -LiteralPath .\dist -Force | Where-Object { $_.FullName -ne $bundlePath })
+          if ($entries.Count -eq 0) { throw 'The release dist directory is empty.' }
+          Compress-Archive -Path $entries.FullName -DestinationPath $bundlePath -CompressionLevel Optimal
+          if (-not (Test-Path -LiteralPath $bundlePath)) { throw 'The complete release bundle was not created.' }
+
       - name: Upload release artifact bundle
         uses: actions/upload-artifact@v4
         with:
           name: dsalgo-local-ai-setup-${{ inputs.tag }}
-          path: |
-            dist/*.exe
-            dist/SHA256SUMS.txt
-            dist/VERIFY.md
-            dist/DSAlgo-Local-Release-Signing.cer
+          path: dist/DSAlgo-Local-AI-Setup-${{ inputs.tag }}.zip
           if-no-files-found: error
 
       - name: Publish GitHub release
@@ -85,8 +95,4 @@ jobs:
           tag_name: ${{ inputs.tag }}
           name: DSAlgo Local AI Setup ${{ inputs.tag }}
           generate_release_notes: true
-          files: |
-            dist/*.exe
-            dist/SHA256SUMS.txt
-            dist/VERIFY.md
-            dist/DSAlgo-Local-Release-Signing.cer
+          files: dist/DSAlgo-Local-AI-Setup-${{ inputs.tag }}.zip

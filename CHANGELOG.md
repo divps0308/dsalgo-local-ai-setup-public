@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed release packaging to publish the complete `dist` directory, including
+  the installer-required `payload` folder, as one extractable ZIP.
+
 - Removed obsolete references to the retired project-context document; the
   README and development guide now carry the project mission, scope, and
   architecture documentation contract.
