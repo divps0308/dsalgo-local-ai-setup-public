@@ -286,6 +286,13 @@ resolution in `CHANGELOG.md` and any resulting decision in `decision-log.md`.
 
 ### Deployment and lifecycle
 
+- Refresh and validate `scripts/windows-time-zones.json` against Unicode CLDR
+  during release maintenance so newly introduced Windows time-zone IDs remain
+  installable without a network lookup.
+- Validate the retired `Mid-Atlantic Standard Time` compatibility mapping on a
+  machine that still actively uses that Windows zone. Unicode CLDR no longer
+  maps it, so the installer uses its fixed UTC-02:00 standard offset without
+  historical daylight-saving behavior.
 - The current validated target is a single interactive Windows 11 user with a
   CUDA NVIDIA GPU, known dedicated VRAM, sufficient system RAM, free disk,
   WSL2, Docker Desktop, and native Ollama. Multi-user tenancy,

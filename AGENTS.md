@@ -6,8 +6,8 @@ This repository implements a single-user, self-hosted AI workstation for
 Windows 10/11. Hardware is detected during installation and the system
 coexists with Docker Desktop/WSL2.
 
-Maintainers and contributors should review `agentic-dev-instructions.md`, `dev-guide.md`,
-`docs/PROJECT_CONTEXT.md`, and the relevant implementation files before making
+Maintainers and contributors should review `agentic-dev-instructions.md`,
+`dev-guide.md`, and the relevant implementation files before making
 architectural or operational changes. `README.md` is the concise landing page,
 `user-guide.md` is the user-facing operations authority, and `dev-guide.md` is
 the contributor architecture authority.

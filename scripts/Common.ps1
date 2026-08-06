@@ -73,10 +73,25 @@ function Test-OAuthBroker {
   try{$response=Invoke-WebRequest "http://localhost:$port/health" -UseBasicParsing -TimeoutSec 5;return ($response.StatusCode -eq 200)}catch{return $false}
 }
 function Wait-Docker([int]$Seconds=180){$docker=Get-DockerExecutable;$end=(Get-Date).AddSeconds($Seconds);do{try{& $docker info *> $null;if($LASTEXITCODE-eq0){return}}catch{};Start-Sleep 3}while((Get-Date)-lt$end);throw 'Docker Desktop did not become ready.'}
+function Get-SystemIanaTimeZone([string]$WindowsTimeZoneId = [TimeZoneInfo]::Local.Id) {
+  if([string]::IsNullOrWhiteSpace($WindowsTimeZoneId)){throw 'Windows did not report a system time-zone identifier.'}
+  if($WindowsTimeZoneId.Contains('/')){return $WindowsTimeZoneId}
+  $mappingFile=Join-Path $Root 'scripts\windows-time-zones.json'
+  if(-not(Test-Path -LiteralPath $mappingFile)){throw "Windows-to-IANA time-zone mapping was not found: $mappingFile"}
+  $mapping=Get-Content -LiteralPath $mappingFile -Raw|ConvertFrom-Json
+  $property=$mapping.mappings.PSObject.Properties[$WindowsTimeZoneId]
+  if(-not $property-or[string]::IsNullOrWhiteSpace([string]$property.Value)){throw "Windows time zone '$WindowsTimeZoneId' has no IANA mapping. Set TZ in .env to a valid IANA time zone and retry."}
+  return [string]$property.Value
+}
+function Resolve-TimeZonePlaceholder([string]$Text,[string]$WindowsTimeZoneId = [TimeZoneInfo]::Local.Id) {
+  if($Text-notmatch'detect-system-timezone-during-install'){return $Text}
+  return $Text.Replace('detect-system-timezone-during-install',(Get-SystemIanaTimeZone $WindowsTimeZoneId))
+}
 function Ensure-Env {
   $envFile=Join-Path $Root '.env'; if(-not(Test-Path $envFile)){Copy-Item (Join-Path $Root '.env.example') $envFile}
   $text=Get-Content $envFile -Raw
   if($text -match 'change-me-generated-by-install'){ $key=[Convert]::ToBase64String((1..36|ForEach-Object{Get-Random -Maximum 256})); $text=$text.Replace('change-me-generated-by-install',$key) }
+  $text=Resolve-TimeZonePlaceholder $text
   if($text -notmatch '(?m)^POSTGRES_PASSWORD='){ $val=[Convert]::ToBase64String((1..24|ForEach-Object{Get-Random -Maximum 256})); $text += "`nPOSTGRES_PASSWORD=$val" }
   Set-Content $envFile $text -Encoding UTF8
 }

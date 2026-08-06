@@ -780,3 +780,23 @@ permissions and SSRF boundaries while allowing configured models to inspect
 local files. Vision and extraction quality remain model-dependent and require
 validation.
 
+### D-063 - Install-time Windows-to-IANA time-zone resolution (2026-08-06)
+
+New environment files contain a time-zone placeholder that `Ensure-Env`
+replaces with the current Windows system time zone expressed as an IANA ID.
+Windows PowerShell 5.1 lacks a built-in converter, so the release carries the
+Unicode CLDR global Windows-zone mapping plus explicit compatibility entries
+for retired IDs still exposed by supported Windows versions, and performs the
+conversion offline.
+Existing non-placeholder `TZ` values are never rewritten. An unknown Windows
+ID stops initialization with remediation guidance rather than silently using
+the wrong local time; Compose uses UTC only when `TZ` is entirely absent.
+
+### D-064 - Retire the separate project-context document (2026-08-06)
+
+The removed `docs` directory and its former project-context document are not
+part of the documentation set. `README.md` remains the mission and scope
+authority, while `dev-guide.md` remains the architecture authority. Maintainer
+instructions, documentation maps, checklists, and user-facing links no longer
+reference the retired document.
+

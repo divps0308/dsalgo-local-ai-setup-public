@@ -64,7 +64,6 @@ non-goals unless a future decision changes scope.
 | `user-guide.md` | Operators and beginners | Installation, configuration, usage, backup, recovery, and troubleshooting |
 | `dev-guide.md` | Contributors | Architecture, source code, APIs, development, testing, and commits |
 | `agentic-dev-instructions.md` | Maintainers and development tooling | Persistent invariants, security rules, documentation contract, hooks, and validation |
-| `docs/PROJECT_CONTEXT.md` | Maintainers | Mission, design history, system map, scope, and enhancement priorities |
 | `decision-log.md` | Maintainers | Accepted and superseded technical/product decisions with rationale |
 | `to-do.md` | Maintainers | Known limitations, gaps, tradeoffs, and future work |
 | `CHANGELOG.md` | Users and maintainers | Versioned user-visible changes and resolved limitations |
@@ -261,7 +260,6 @@ workspace/                  Container-agent filesystem boundary
 runtime/                    Generated process state and decrypted runtime data
 logs/                       Operational logs
 assets/branding/            Canonical PNG and ICO
-docs/PROJECT_CONTEXT.md     Mission and design context
 *.ps1                       User-facing lifecycle and diagnostic commands
 ```
 
@@ -612,10 +610,17 @@ create `dist/*.exe` files.
 
    ```powershell
    Copy-Item .env.example .env -ErrorAction SilentlyContinue
+   . .\scripts\Common.ps1
+   Ensure-Env
    ```
 
-   Set a local `AGENT_API_KEY` and any machine-specific values required by the
-   Compose file. Keep the key out of logs and support reports.
+   `Ensure-Env` generates the local `AGENT_API_KEY` and maps the Windows system
+   time-zone ID to the IANA `TZ` value required by Linux containers. It uses the
+   bundled Unicode CLDR global mapping plus documented retired-Windows-ID
+   compatibility entries in `scripts/windows-time-zones.json`, so installation
+   does not require a time-zone lookup over the network. Set any
+   other machine-specific values required by the Compose file. Keep the key out
+   of logs and support reports.
 3. Install frontend dependencies and build the committed static bundles:
 
    ```powershell
@@ -900,7 +905,7 @@ Before handoff:
 - README links to the correct authoritative guide;
 - user-visible behavior appears in `user-guide.md`;
 - architecture/API/security changes appear in `dev-guide.md`;
-- project mission/scope changes appear in `docs/PROJECT_CONTEXT.md`;
+- project mission and scope changes appear in `README.md` and `dev-guide.md`;
 - decisions are appended to `decision-log.md`;
 - limitations are appended or resolved in `to-do.md`;
 - changes are summarized in `CHANGELOG.md`;

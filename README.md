@@ -104,8 +104,6 @@ Choose the guide for your task:
   technology stack, APIs, security, development, testing, hooks, and commits.
 - [agentic-dev-instructions.md](agentic-dev-instructions.md) — reusable
   repository standards used by maintainers and automated development tools.
-- [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) — project mission, history,
-  scope, and design context.
 - [decision-log.md](decision-log.md) — accepted functionality and architecture
   decisions.
 - [to-do.md](to-do.md) — known limitations and future work.
@@ -123,7 +121,8 @@ in again and rerun `install.exe`; progress is saved and resumes safely.
 
 The installer adds missing WSL2, Python, Ollama, and Docker Desktop
 prerequisites, downloads configured models, builds images, creates stopped
-containers, and adds Desktop/Start Menu shortcuts.
+containers, detects the Windows system time zone for container-local time, and
+adds Desktop/Start Menu shortcuts.
 
 Start with `start.exe` or its installed shortcut. The UAC prompt elevates only
 Docker/container startup. Workbench and OAuth run as the signed-in,

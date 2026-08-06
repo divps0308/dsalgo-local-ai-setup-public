@@ -16,10 +16,9 @@ Before making a change, review:
 
 1. `README.md`
 2. `dev-guide.md`
-3. `docs/PROJECT_CONTEXT.md`
-4. `decision-log.md`
-5. `to-do.md`
-6. The implementation and configuration files relevant to the request
+3. `decision-log.md`
+4. `to-do.md`
+5. The implementation and configuration files relevant to the request
 
 Use `user-guide.md` to confirm that user-visible behavior remains clear and
 accurately documented.
@@ -95,7 +94,6 @@ Every functional change must review and update the applicable files:
 | `user-guide.md` | Beginner installation, daily use, recovery, and troubleshooting |
 | `dev-guide.md` | Architecture, source layout, APIs, security, development, testing, and release process |
 | `agentic-dev-instructions.md` | Persistent coding-agent constraints and workflow |
-| `docs/PROJECT_CONTEXT.md` | Mission, historical context, system map, scope, and current architecture |
 | `decision-log.md` | New or revised functional, architectural, security, deployment, or material UX decisions |
 | `to-do.md` | Every discovered limitation, unsupported behavior, validation gap, operational constraint, or follow-up |
 | `CHANGELOG.md` | User-visible additions, fixes, migrations, and demonstrably resolved limitations |
