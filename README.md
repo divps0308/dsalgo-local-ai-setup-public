@@ -16,7 +16,7 @@ General Conversation, Reasoning, Coding, Deep Research, or All. The confirmed
 result controls model downloads and creates enabled sample general, coding,
 and deep-research agents.
 
-## Release readiness
+## Current validation status
 
 This is a capable local workstation distribution, but it should currently be
 treated as controlled-beta software rather than a universal installer. Disk
@@ -116,30 +116,18 @@ The comparison guide is [compare-similar-tools.md](compare-similar-tools.md).
 
 ## Quick installation
 
-Open Windows PowerShell as Administrator:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-Set-Location -LiteralPath '<cloned-repository>'
-.\Install.ps1
-```
-
-If Windows must restart, sign in and rerun the same command. Installation
-progress is saved and resumes safely.
+Extract the public release package and run `install.exe` as Administrator.
+Accept the displayed license notice, review the detected hardware, choose the
+models, and confirm installation in the wizard. If Windows must restart, sign
+in again and rerun `install.exe`; progress is saved and resumes safely.
 
 The installer adds missing WSL2, Python, Ollama, and Docker Desktop
 prerequisites, downloads configured models, builds images, creates stopped
 containers, and adds Desktop/Start Menu shortcuts.
 
-Start from a normal non-Administrator PowerShell window:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\Start.ps1 -OpenBrowser
-```
-
-The UAC prompt elevates only Docker/container startup. Workbench and OAuth run
-as the signed-in, non-Administrator user.
+Start with `start.exe` or its installed shortcut. The UAC prompt elevates only
+Docker/container startup. Workbench and OAuth run as the signed-in,
+non-Administrator user, and the launcher opens the three local interfaces.
 
 Read the complete [installation walkthrough](user-guide.md#4-first-installation)
 before installing on a new machine.
@@ -182,14 +170,12 @@ publicly trusted; SmartScreen or Unknown Publisher warnings are expected.
 
 | Command | Effect |
 |---|---|
-| `Install.ps1` | Install/resume prerequisites, build, and create stopped services |
-| `Start.ps1` | Start selected services with the correct privilege split |
-| `Stop.ps1` | Stop services and retain containers/data |
-| `Repair.ps1` | Rebuild and recreate services, leaving them stopped |
-| `Remove.ps1` | Remove containers/services and retain durable data/configuration |
-| `Uninstall.ps1` | Confirmed, ownership-aware uninstall with optional purge of installer-owned images, volumes, and models |
-| `Health.ps1` | Check service health |
-| `Backup.ps1` | Back up supported project state |
+| `install.exe` | Install or resume prerequisites and create stopped services |
+| `start.exe` | Start selected services with the correct privilege split |
+| `stop.exe` | Stop services and retain containers/data |
+| `repair.exe` | Rebuild and recreate services, leaving them stopped |
+| `remove.exe` | Remove containers/services and retain durable data/configuration |
+| `uninstall.exe` | Confirmed, ownership-aware uninstall with optional purge of installer-owned images, volumes, and models |
 
 ## Operating modes
 

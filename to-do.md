@@ -1,4 +1,4 @@
-# Limitations and To-Do Register
+﻿# Limitations and To-Do Register
 
 - Backend: Validate multimodal agent requests end to end with Open WebUI
   attachments across supported vision and document models. The gateway accepts
@@ -34,7 +34,7 @@
   differs from the Administrator account; native Workbench and OAuth must be
   able to write runtime state as the signed-in user.
 
-## Independent audit follow-up
+## Reliability and validation follow-up
 
 - Validate structured-tool capability for every catalog and user-managed model
   before allowing Goal mode; models without tool calling remain Ask/Plan-only.
@@ -42,10 +42,10 @@
   Ollama releases, including malformed fenced file content and prose-only
   continuation loops.
 
-- Audit finding: installation, lifecycle recovery, and hardware-path coverage
-  remain controlled-beta concerns. Public release material should describe the
-  installer as broadly validated only after representative preflight,
-  post-install, and compatibility-matrix results are available.
+- Installation, lifecycle recovery, and hardware-path coverage remain
+  controlled-beta concerns. Public documentation should describe the installer
+  as broadly validated only after representative preflight, post-install, and
+  compatibility-matrix results are available.
 
 - Add a task-based local landing page that explains when to use Open WebUI,
   Agent Studio, Workbench, and Health, with persistent badges for local model,
@@ -55,7 +55,7 @@
   actionable safe fixes, GPU placement and RAM/VRAM/Docker allocation, and
   links to relevant redacted log sections.
 
-## Current release-readiness caveats
+## Current validation caveats
 
 - The installer is deterministic and performs no AI inference during hardware
   detection or model recommendation, but deterministic output is not proof of
@@ -322,7 +322,7 @@ resolution in `CHANGELOG.md` and any resulting decision in `decision-log.md`.
 ### Security and trust boundaries
 
 - The stack is localhost-oriented and has no internet-facing reverse proxy,
-  centralized identity provider, RBAC, or multi-user audit boundary.
+  centralized identity provider, RBAC, or multi-user review boundary.
 - Agent Studio and Developer Workbench intentionally remain separate
   applications. Studio is a containerized configuration surface; Workbench is
   a higher-trust native Windows execution surface. A combined application would
@@ -555,3 +555,4 @@ resolution in `CHANGELOG.md` and any resulting decision in `decision-log.md`.
   post-mutation verification against representative Ollama model families.
   Record model-specific incompatibilities rather than treating downloadability
   as Goal-mode support.
+

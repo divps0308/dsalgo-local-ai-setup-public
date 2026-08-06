@@ -13,7 +13,7 @@
   require successful build/test evidence, with one repair for unsupported
   completion prose before an explicit incomplete result.
 
-- Documented the independent audit disposition: Windows/NVIDIA is the current
+- Documented the independent review disposition: Windows/NVIDIA is the current
   validated baseline, while preflight resource gates, post-install checks,
   broader hardware validation, lifecycle recovery, and documentation
   reconciliation remain release-bar work.

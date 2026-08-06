@@ -1,4 +1,4 @@
-# DSAlgo Local AI Setup Development Guide
+﻿# DSAlgo Local AI Setup Development Guide
 
 This is the authoritative architecture and contributor guide for DSAlgo Local
 AI Setup. It is written for developers changing the Python services, Svelte
@@ -23,11 +23,11 @@ non-Windows compatibility remain validation work. Catalog values are planning
 estimates until measured on the target backend. See [`to-do.md`](to-do.md) and
 decision D-039 before describing this as a production-wide installer.
 
-## Independent audit disposition
+## Independent review disposition
 
 An independent review rated local capability and the security architecture
 strong for the intended Windows workstation, while rating installation,
-reliability confidence, and documentation release readiness as moderate. Treat
+reliability confidence, and documentation validation status as moderate. Treat
 that assessment as planning input, not as a compatibility claim. The release
 bar is a blocking preflight/dry-run for free disk, selected downloads,
 rollback headroom, WSL2/Docker readiness, NVIDIA/Ollama viability, role
@@ -148,7 +148,7 @@ flowchart LR
     User --> Studio["Local Agent Studio :3001"]
     User --> Workbench["Developer Workbench :3002<br/>native, non-admin"]
 
-    WebUI --> Gateway["Agent Gateway :8001→8000"]
+    WebUI --> Gateway["Agent Gateway :8001â†’8000"]
     Studio --> Gateway
     Studio --> Config["config/agents.json<br/>config/runtime-policy.json"]
     Workbench --> Projects["config/projects.json"]
@@ -178,7 +178,7 @@ chat. Workbench is a higher-trust execution plane with arbitrary approved
 Windows project roots, patch approval, native commands, and Git operations.
 
 Merging them would either expose native project execution to the containerized
-configuration service or require Studio to inherit Workbench’s broader trust.
+configuration service or require Studio to inherit Workbenchâ€™s broader trust.
 The separation keeps deployment, authentication, filesystem access, failure
 domains, and user intent explicit. This decision is recorded as D-004 in
 `decision-log.md`.
@@ -239,7 +239,7 @@ flowchart TB
 ```
 
 The gateway container has no Docker socket, runs without root privileges, drops
-all capabilities, uses `no-new-privileges`, and sees only the project’s
+all capabilities, uses `no-new-privileges`, and sees only the projectâ€™s
 `workspace/` as writable agent storage. Workbench runs outside Docker only
 because it must invoke native Windows toolchains; it binds to loopback, checks a
 runtime browser token, validates root containment, and approval-gates changes.
@@ -315,7 +315,7 @@ Workbench execution uses the selected agent's configured backing model and
 `config/agents.json`, bounded by a defensive maximum of 1000 steps. This is an
 execution-turn budget, not a guarantee that a model will complete a task. The
 model must return a structured `tool_calls` response for edits or commands;
-ordinary prose such as “please approve this command” cannot create an approval
+ordinary prose such as â€œplease approve this commandâ€ cannot create an approval
 card and is never executed by the backend.
 
 A bare JSON array is invalid even when empty.
@@ -944,13 +944,13 @@ Export-PfxCertificate -Cert $cert -FilePath .\dsalgo-release-signing.pfx -Passwo
 [Convert]::ToBase64String([IO.File]::ReadAllBytes('.\dsalgo-release-signing.pfx')) | Set-Clipboard
 ```
 
-In GitHub, create an environment named `release` under repository Settings →
+In GitHub, create an environment named `release` under repository Settings â†’
 Environments. Add required reviewers and restrict deployment branches/tags to
 the protected release path. Add these **environment secrets**, never ordinary
 repository variables: `SIGNING_CERT_PFX_B64` (the clipboard Base64 value) and
 `SIGNING_CERT_PASSWORD` (the PFX password). Delete the local PFX after upload.
 
-The owner runs Actions → Release → Run workflow and supplies an existing tag
+The owner runs Actions â†’ Release â†’ Run workflow and supplies an existing tag
 such as `v1.0.0`. The workflow checks the owner identity and tag format,
 checks out that tag, imports the PFX only into the ephemeral Windows runner,
 runs the normal frontend/package/sign build, publishes the EXEs, checksum,
@@ -959,3 +959,4 @@ certificate and temporary PFX. The private key is not placed in the repository,
 release assets, logs, or artifacts. Rotate the PFX and GitHub secrets if it is
 ever exposed; previously signed releases should then be treated as legacy
 artifacts.
+

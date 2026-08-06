@@ -1,4 +1,4 @@
-# Functionality and Architecture Decision Log
+﻿# Functionality and Architecture Decision Log
 
 ## D-046: Enforce structured progress at the Workbench boundary
 
@@ -25,7 +25,7 @@
 - **Consequences:** More models can use tools, while unsupported or malformed
   pseudo-calls still produce no side effect and remain diagnosable.
 
-## D-045: Treat independent audit findings as release-bar work
+## D-045: Treat independent review findings as validation work
 
 - **Status:** Accepted.
 - **Decision:** Position the current distribution as controlled-beta outside
@@ -34,7 +34,7 @@
   actionable health diagnostics as release work. Treat selected-agent
   Workbench behavior (sample/custom agent by stable ID and backing model) as
   authoritative over older role-only notes.
-- **Rationale:** The independent audit found strong local capability and
+- **Rationale:** The independent review found strong local capability and
   security boundaries, but moderate installation/reliability confidence and
   documentation contradictions.
 - **Consequences:** Preserve controlled-beta wording until representative
@@ -163,7 +163,7 @@ is unavailable.
 
 ## Accepted decisions
 
-### D-001 — Optimize for one documented Windows workstation
+### D-001 â€” Optimize for one documented Windows workstation
 
 - **Status:** Accepted
 - **Decision:** Target a single Windows 11 user on a capable NVIDIA CUDA system
@@ -173,7 +173,7 @@ is unavailable.
 - **Consequences:** Multi-user, server, Linux, and macOS deployment are outside
   the supported baseline.
 
-### D-002 — Run Ollama natively on Windows
+### D-002 â€” Run Ollama natively on Windows
 
 - **Status:** Accepted
 - **Decision:** Keep Ollama outside Docker and use native NVIDIA access.
@@ -182,7 +182,7 @@ is unavailable.
 - **Consequences:** Containers reach Ollama through the host boundary, and the
   system has both native and container lifecycles.
 
-### D-003 — Containerize the ordinary local application plane
+### D-003 â€” Containerize the ordinary local application plane
 
 - **Status:** Accepted
 - **Decision:** Run Open WebUI, Agent Gateway, Agent Studio, and optional data
@@ -192,7 +192,7 @@ is unavailable.
 - **Consequences:** Docker Desktop and WSL2 are required; host-access features
   remain separate.
 
-### D-004 — Keep Local Agent Studio and Developer Workbench separate
+### D-004 â€” Keep Local Agent Studio and Developer Workbench separate
 
 - **Status:** Accepted
 - **Decision:** Local Agent Studio at `localhost:3001` and Developer Workbench at
@@ -213,7 +213,7 @@ is unavailable.
   process. The products share a design system but not a privileged runtime or
   backend.
 
-### D-005 — Run Developer Workbench natively and non-elevated
+### D-005 â€” Run Developer Workbench natively and non-elevated
 
 - **Status:** Accepted
 - **Decision:** Host Workbench on Windows loopback rather than in Docker.
@@ -224,7 +224,7 @@ is unavailable.
 - **Consequences:** Workbench has separate lifecycle scripts, does not appear
   as a Docker container, and must preserve loopback/token/project containment.
 
-### D-006 — Use explicit approved project roots and mandatory approvals
+### D-006 â€” Use explicit approved project roots and mandatory approvals
 
 - **Status:** Accepted
 - **Decision:** Workbench may access only roots in `config/projects.json`;
@@ -234,7 +234,7 @@ is unavailable.
 - **Consequences:** Drive roots are rejected, path traversal is contained, and
   some autonomous workflows pause for human decisions.
 
-### D-007 — Keep container agent tools confined to `workspace/`
+### D-007 â€” Keep container agent tools confined to `workspace/`
 
 - **Status:** Accepted
 - **Decision:** Gateway file and command tools operate only in the mounted
@@ -243,7 +243,7 @@ is unavailable.
 - **Consequences:** Arbitrary Windows projects require Workbench rather than
   container agents.
 
-### D-008 — Centralize models in `config/models.json`
+### D-008 â€” Centralize models in `config/models.json`
 
 - **Status:** Accepted
 - **Decision:** Model tags, contexts, keep-alive, and runtime settings have one
@@ -253,7 +253,7 @@ is unavailable.
 - **Consequences:** Scripts and Python code must read the registry rather than
   hard-code model configuration.
 
-### D-009 — Centralize agents and MCP assignments in `config/agents.json`
+### D-009 â€” Centralize agents and MCP assignments in `config/agents.json`
 
 - **Status:** Accepted
 - **Decision:** Configurable agent behavior, permissions, step limits, and MCP
@@ -263,16 +263,16 @@ is unavailable.
 - **Consequences:** Changes affect subsequent requests; secrets are prohibited
   from this file.
 
-### D-010 — Preserve an OpenAI-compatible gateway contract
+### D-010 â€” Preserve an OpenAI-compatible gateway contract
 
 - **Status:** Accepted
 - **Decision:** Expose `/v1/models` and `/v1/chat/completions`.
 - **Rationale:** Open WebUI can treat local agents as an external
   OpenAI-compatible connection without custom frontend integration.
-- **Consequences:** Open WebUI may label gateway agents “External” even though
+- **Consequences:** Open WebUI may label gateway agents â€œExternalâ€ even though
   inference ultimately runs through local Ollama.
 
-### D-011 — Prefer one resident generation model
+### D-011 â€” Prefer one resident generation model
 
 - **Status:** Accepted
 - **Decision:** Use pinned 14B Q4 models, bounded context sizes, and keep only one
@@ -282,7 +282,7 @@ is unavailable.
 - **Consequences:** Orchestration can trigger model swaps and is reserved for
   complex tasks where independent review justifies latency.
 
-### D-012 — Preserve at least 24 GB outside Docker/WSL
+### D-012 â€” Preserve at least 24 GB outside Docker/WSL
 
 - **Status:** Accepted
 - **Decision:** Default WSL/Docker profiles leave substantial RAM to Windows and
@@ -292,7 +292,7 @@ is unavailable.
 - **Consequences:** Optional services may need alternate profiles and cannot be
   assumed always active.
 
-### D-013 — Keep optional services behind Compose profiles
+### D-013 â€” Keep optional services behind Compose profiles
 
 - **Status:** Accepted
 - **Decision:** Optional workflow, database, cache, and vector services are
@@ -300,7 +300,7 @@ is unavailable.
 - **Rationale:** Idle developer services should not consume scarce laptop RAM.
 - **Consequences:** Their endpoints are unavailable until explicitly started.
 
-### D-014 — Store static MCP secrets with Windows DPAPI references
+### D-014 â€” Store static MCP secrets with Windows DPAPI references
 
 - **Status:** Accepted
 - **Decision:** Never store plaintext MCP secrets in agent configuration; use
@@ -310,7 +310,7 @@ is unavailable.
 - **Consequences:** Studio does not display secret values, and static-secret
   testing has intentional visibility constraints.
 
-### D-015 — Use a native OAuth broker for MCP OAuth 2.1
+### D-015 â€” Use a native OAuth broker for MCP OAuth 2.1
 
 - **Status:** Accepted
 - **Decision:** Perform OAuth discovery, browser authorization, PKCE, callback,
@@ -322,7 +322,7 @@ is unavailable.
 - **Consequences:** Containers request short-lived access tokens through a
   runtime-authenticated broker. The broker has a separate lifecycle.
 
-### D-016 — Treat MCP servers as privileged and disabled by default
+### D-016 â€” Treat MCP servers as privileged and disabled by default
 
 - **Status:** Accepted
 - **Decision:** Connect only trusted Streamable HTTP MCP servers, assign them
@@ -331,7 +331,7 @@ is unavailable.
 - **Consequences:** Configuration saved, OAuth connected, and tools operational
   are separate states that the UI and documentation must distinguish.
 
-### D-017 — Do not expose local services publicly
+### D-017 â€” Do not expose local services publicly
 
 - **Status:** Accepted
 - **Decision:** Preserve localhost/loopback assumptions for Studio, Workbench,
@@ -341,7 +341,7 @@ is unavailable.
 - **Consequences:** Public tunnels, router forwarding, or non-loopback binding
   require explicit security redesign.
 
-### D-018 — Give Workbench remote-impact Git actions explicit confirmation
+### D-018 â€” Give Workbench remote-impact Git actions explicit confirmation
 
 - **Status:** Accepted
 - **Decision:** Separate read-only status/diff, local branch/commit actions, and
@@ -351,7 +351,7 @@ is unavailable.
 - **Consequences:** Push is not styled as destructive deletion, but it is
   visually distinct and confirmation-gated.
 
-### D-019 — Build Studio and Workbench with one shared Svelte design system
+### D-019 â€” Build Studio and Workbench with one shared Svelte design system
 
 - **Status:** Accepted
 - **Decision:** Use Svelte 5, TypeScript, Vite, shared local components, CSS
@@ -361,7 +361,7 @@ is unavailable.
 - **Consequences:** The products look and behave consistently without sharing
   their privileged backend. Frontend development requires Node/pnpm.
 
-### D-020 — Commit compiled frontend assets
+### D-020 â€” Commit compiled frontend assets
 
 - **Status:** Accepted
 - **Decision:** Store production assets in `agent-studio/static/` and
@@ -371,7 +371,7 @@ is unavailable.
 - **Consequences:** Source changes must run type checks and rebuild both asset
   directories before completion.
 
-### D-021 — Support System, Light, and Dark themes
+### D-021 â€” Support System, Light, and Dark themes
 
 - **Status:** Accepted
 - **Decision:** Default to OS appearance, allow explicit Light/Dark selection,
@@ -380,7 +380,7 @@ is unavailable.
   across working environments.
 - **Consequences:** Preferences are local to each browser profile.
 
-### D-022 — Use contextual help and least-privilege explanations
+### D-022 â€” Use contextual help and least-privilege explanations
 
 - **Status:** Accepted
 - **Decision:** Provide searchable page help, accessible tooltips, semantic
@@ -390,7 +390,7 @@ is unavailable.
 - **Consequences:** Help content must remain synchronized with real behavior
   and must not become the only source of critical safety information.
 
-### D-023 — Do not fabricate unsupported UI data
+### D-023 â€” Do not fabricate unsupported UI data
 
 - **Status:** Accepted
 - **Decision:** Show only fields and states returned by existing backends.
@@ -399,7 +399,7 @@ is unavailable.
 - **Consequences:** Some requested summaries remain absent until backend
   contracts provide them and are tracked in `to-do.md`.
 
-### D-024 — Favor a reliable local agent stack over a workflow platform
+### D-024 â€” Favor a reliable local agent stack over a workflow platform
 
 - **Status:** Accepted
 - **Decision:** Version 5 does not treat workflow canvases, enterprise
@@ -410,7 +410,7 @@ is unavailable.
 - **Consequences:** Add such capabilities only for a concrete workflow with a
   deliberate architecture and security decision.
 
-### D-025 — Maintain explicit operational and architectural records
+### D-025 â€” Maintain explicit operational and architectural records
 
 - **Status:** Accepted
 - **Decision:** `to-do.md` is the canonical limitation/to-do register and
@@ -421,18 +421,18 @@ is unavailable.
 - **Consequences:** Resolved limitations require changelog evidence; changed
   decisions are superseded rather than silently erased.
 
-### D-026 — Use clean, non-compatible agent naming
+### D-026 â€” Use clean, non-compatible agent naming
 
 - **Status:** Accepted
 - **Decision:** Built-ins retain `agent-*`; setup agents use immutable `my-*`
   keys and `My ...` names; Studio-created agents use immutable `my-custom-*`
-  keys and `My Custom — ...` names. No legacy IDs or aliases are retained.
+  keys and `My Custom â€” ...` names. No legacy IDs or aliases are retained.
 - **Rationale:** A clean-install baseline is preferred over compatibility, and
   the categories must be visibly distinct from raw Ollama model tags.
 - **Consequences:** Existing callers using old configured IDs must select a
   renamed agent.
 
-### D-027 — Centralize connectivity as a reversible policy overlay
+### D-027 â€” Centralize connectivity as a reversible policy overlay
 
 - **Status:** Accepted
 - **Decision:** `config/runtime-policy.json` is the source of truth for Online,
@@ -443,7 +443,7 @@ is unavailable.
 - **Consequences:** Returning Online restores effective capabilities without
   reconstructing settings. Writers use revisions and atomic replacement.
 
-### D-028 — Separate AI-restricted connectivity from strict offline use
+### D-028 â€” Separate AI-restricted connectivity from strict offline use
 
 - **Status:** Accepted
 - **Decision:** Restricted Online permits approved build/dependency/Docker/Git
@@ -456,7 +456,7 @@ is unavailable.
   application policy is not an OS-wide firewall and cannot govern unrelated
   Windows or independently configured Open WebUI processes.
 
-### D-029 — Separate distributable configuration from personal overlays
+### D-029 â€” Separate distributable configuration from personal overlays
 
 - **Status:** Accepted
 - **Decision:** Tracked active JSON is a clean first-install baseline with no
@@ -468,7 +468,7 @@ is unavailable.
 - **Consequences:** Generic installs require initial configuration. Personal
   overlays are local snapshots, not a versioned backup mechanism.
 
-### D-030 — Give each lifecycle command one retention boundary
+### D-030 â€” Give each lifecycle command one retention boundary
 
 - **Status:** Accepted
 - **Decision:** Install is resumable and creates stopped services; Start splits
@@ -479,7 +479,7 @@ is unavailable.
 - **Consequences:** Install and Repair no longer imply startup. Older setups
   without ownership state are uninstalled conservatively.
 
-### D-031 — Use per-user shortcuts and common product branding
+### D-031 â€” Use per-user shortcuts and common product branding
 
 - **Status:** Accepted
 - **Decision:** The supplied DS_ALGO PNG/ICO is used by both UIs and Windows
@@ -489,7 +489,7 @@ is unavailable.
   every Windows account.
 - **Consequences:** Other user accounts must install their own shortcuts.
 
-### D-032 — Separate documentation by audience and authority
+### D-032 â€” Separate documentation by audience and authority
 
 - **Status:** Accepted
 - **Decision:** Keep `README.md` as a concise landing page,
@@ -503,7 +503,7 @@ is unavailable.
 - **Consequences:** Changes must update the authoritative audience-specific
   document and link rather than copying complete sections between guides.
 
-### D-033 — Validate configuration structure, not only JSON syntax
+### D-033 â€” Validate configuration structure, not only JSON syntax
 
 - **Status:** Accepted
 - **Decision:** Install and Repair verify required top-level properties as well
@@ -515,7 +515,7 @@ is unavailable.
 - **Consequences:** Structural mistakes fail earlier with a configuration error
   instead of a downstream process exception.
 
-### D-034 — Explicitly route root-level branded assets
+### D-034 â€” Explicitly route root-level branded assets
 
 - **Status:** Accepted
 - **Decision:** Studio and Workbench explicitly serve `/logo.png` and
@@ -528,7 +528,7 @@ is unavailable.
   release cache-buster and favicon responses are not cached so a formerly
   missing icon can recover without retaining a cached 404.
 
-### D-035 — Keep the Compose identity stable across source-directory renames
+### D-035 â€” Keep the Compose identity stable across source-directory renames
 
 - **Status:** Accepted
 - **Decision:** The source directory may be renamed without changing the Docker
@@ -640,11 +640,11 @@ Workbench tasks now select an enabled sample or custom agent by stable ID. The
 backend resolves its configured backing model tag deterministically and retains
 without role fallback. This aligns task execution with Local Agent Studio
 configuration without weakening approval gates.
-### D-045 — Workbench completion evidence and UTF-8 tool output (2026-08-01)
+### D-045 â€” Workbench completion evidence and UTF-8 tool output (2026-08-01)
 
 Workbench task results require a recorded write action, successful command/test result, or explicit no-change conclusion before status `completed`; otherwise they are marked `incomplete`. Project file reads repair clear UTF-8-as-Latin-1 mojibake without altering correctly encoded content.
 
-### D-046 — Explicit Workbench work modes (2026-08-01)
+### D-046 â€” Explicit Workbench work modes (2026-08-01)
 
 Ask and Plan modes expose only read/search tools; Goal retains the existing approval-gated write and command workflow. Plan artifacts are saved by the Workbench under `.workbench-plans` only after an explicit approval, with timestamped unique names.
 
@@ -711,14 +711,14 @@ existing safety guards are reached. This improves interoperability with local
 models without claiming that every model reliably supports tool calling.
 Goal requests also ask Ollama for JSON-formatted output when supported; a
 single compatibility retry omits that option for older Ollama versions.
-## D-054 — Canonical license and installer acceptance
+## D-054 â€” Canonical license and installer acceptance
 
 `LICENSE` is the sole canonical legal license and is displayed by the
 installer before machine changes. A required checkbox acknowledges the MIT
 license and clarifies that third-party software and models retain their own
 ownership and terms.
 
-## D-055 — Owner-controlled public releases
+## D-055 â€” Owner-controlled public releases
 
 Contributors use pull requests and CI; releases are created only through a
 protected GitHub environment controlled by the repository owner. Signing
@@ -779,3 +779,4 @@ text extraction uses the pinned `pypdf` dependency. This preserves attachment
 permissions and SSRF boundaries while allowing configured models to inspect
 local files. Vision and extraction quality remain model-dependent and require
 validation.
+
