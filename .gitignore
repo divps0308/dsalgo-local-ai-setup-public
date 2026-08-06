@@ -3,7 +3,9 @@
 /.env.*
 !/.env.example
 /runtime/
+/dist/
 /backups/
+/docs/
 /benchmark-results.json
 config/secrets.dpapi.json
 config/oauth-tokens.dpapi.json
