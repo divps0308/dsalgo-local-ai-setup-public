@@ -1,9 +1,10 @@
-# Agentic Development Instructions
+# Maintainer and Contributor Standards
 
-Copy this file into the persistent instruction mechanism used by Claude Code,
-Codex, Copilot, or another coding agent. If the harness supports repository
-instruction files, keep this file as the canonical reusable source and make the
-harness-specific file point to it.
+This document defines the engineering, security, and documentation standards
+for maintaining DSAlgo Local AI Setup. It is a reference for human contributors
+and may also be supplied to repository-aware development tools. Repository
+integrations should reference this document rather than maintaining a second set
+of rules.
 
 ## Mission
 
@@ -11,7 +12,7 @@ Maintain DSAlgo Local AI Setup as a secure, single-user, self-hosted Windows AI
 workstation. Preserve local-first operation, explicit trust boundaries, native
 NVIDIA acceleration through Windows Ollama, and predictable lifecycle scripts.
 
-Before changing anything, read:
+Before making a change, review:
 
 1. `README.md`
 2. `dev-guide.md`
@@ -20,8 +21,8 @@ Before changing anything, read:
 5. `to-do.md`
 6. The implementation and configuration files relevant to the request
 
-Use `user-guide.md` to verify that user-visible behavior remains understandable
-and accurately documented.
+Use `user-guide.md` to confirm that user-visible behavior remains clear and
+accurately documented.
 
 ## Non-negotiable architecture
 
@@ -44,6 +45,10 @@ and accurately documented.
 - Workbench tasks select enabled agents by stable ID. Preserve Ask (read-only),
   Plan (saved Markdown plan), and Goal (approval-gated continuation) semantics;
   never execute edits or commands described only in assistant prose.
+- Treat Goal models as untrusted protocol clients: validate complete tool
+  arguments against controller-owned schemas, keep compatibility aliases
+  narrow and deterministic, bound repair/loop behavior, and require
+  post-mutation verification before completion.
 
 ## Security rules
 
@@ -77,8 +82,8 @@ and accurately documented.
 6. Run repository safety checks before committing.
 7. Review the complete diff, then commit one coherent change.
 
-Do not run Uninstall, Remove with destructive flags, model deletion, volume
-deletion, destructive restore, or external-project deletion merely for testing.
+Destructive operations such as uninstall, model or volume deletion, destructive
+restore, and external-project deletion are not appropriate for routine tests.
 
 ## Documentation contract
 
@@ -97,9 +102,10 @@ Every functional change must review and update the applicable files:
 | `SECURITY.md` | Supported security posture and disclosure guidance when the threat model changes |
 | `.env.example` | Public environment contract when variables change |
 
-Do not duplicate full guides across files. Link to the authoritative guide.
-Mark replaced decisions as superseded; never silently rewrite decision history.
-Remove a to-do only after proving it resolved and recording the resolution.
+Each topic has one authoritative guide; other documents should link to it rather
+than duplicating the full text. Replaced decisions remain in the history and are
+marked superseded. A roadmap item is removed only after its resolution is
+verified and recorded.
 
 ## Configuration contract
 

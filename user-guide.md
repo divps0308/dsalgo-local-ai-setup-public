@@ -26,6 +26,20 @@ actively loaded when practical.
 
 Developers changing the source should use [dev-guide.md](dev-guide.md).
 
+## Current support and release confidence
+
+The supported starting point is Windows 11 with WSL2, Docker Desktop, native
+Windows Ollama, a known NVIDIA CUDA GPU with dedicated VRAM, and sufficient
+RAM and disk. Other hardware and operating-system paths are validation work,
+not promises. Current estimates do not yet block every insufficient-disk or
+late Docker/WSL failure before downloads begin, so treat installation and
+lifecycle recovery as controlled-beta and validate post-install health.
+
+Open WebUI is the chat/documents surface, Agent Studio configures agents and
+MCP, and Developer Workbench is the higher-trust approved-project coding
+surface. A raw Ollama model is not the same as a configured gateway agent;
+Workbench tasks require an enabled agent with a valid backing model.
+
 ## 1. What this project gives you
 
 After installation you have three main browser applications:
@@ -102,36 +116,21 @@ install WSL, Python, Ollama, or Docker Desktop first.
 
 ## 4. First installation
 
-### Step 1: Open Administrator PowerShell
+### Step 1: Open the release package
 
-Open the Start Menu, search for **Windows PowerShell**, right-click it, and
-choose **Run as administrator**.
+The public release package contains `install.exe`, `start.exe`, `stop.exe`,
+`repair.exe`, `remove.exe`, and `uninstall.exe`. Extract it to a local
+directory; do not run executables from inside the compressed archive.
 
 Administrator access is required to enable Windows features and install system
 applications. Developer Workbench itself does not run as Administrator.
 
-### Step 2: Allow scripts for this PowerShell window
+### Step 2: Run the installer
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-```
-
-This changes policy only for the current PowerShell window. It does not
-permanently lower the system execution policy.
-
-### Step 3: Open the project directory
-
-```powershell
-Set-Location -LiteralPath 'C:\self-hosted-setup\dsalgo-local-ai-setup'
-```
-
-If you placed the project somewhere else, use that full path.
-
-### Step 4: Run the installer
-
-```powershell
-.\Install.ps1
-```
+Right-click `install.exe` and choose **Run as administrator**. Follow the
+single installer window, accept the displayed `LICENSE` and third-party
+notice, review hardware, choose model preferences, and confirm installation.
+No repository checkout or PowerShell execution-policy change is required.
 
 The installer:
 
@@ -157,23 +156,15 @@ The installer:
 ### If Windows asks for a restart
 
 The installer exits with its progress saved. Restart Windows, sign in, reopen
-Administrator PowerShell, return to the project directory, and run the same
-command again:
-
-```powershell
-.\Install.ps1
-```
+sign in again, and launch `install.exe` from the extracted release directory.
 
 The installer is designed to resume. Do not delete `runtime/install-state.json`
 between runs.
 
 To allow the installer to initiate the required restart:
 
-```powershell
-.\Install.ps1 -RestartIfRequired
-```
-
-You must still sign in and rerun the installer afterward.
+The installer resumes from its recorded state. Do not delete the `runtime`
+directory between runs.
 
 ## 5. Installation choices
 
@@ -184,42 +175,30 @@ database, cache, and vector services are not installed by the core setup.
 
 ### Skip model downloads
 
-```powershell
-.\Install.ps1 -SkipModels
-```
-
-Use this if models are already installed or you need to finish infrastructure
-setup before downloading large files.
+Model downloads are selected in the installer wizard. The wizard shows model
+fit and estimated storage before downloading anything; leave a model
+unselected when it should not be installed.
 
 ### Use preserved personal configuration
 
 The public/default setup contains no custom agents, MCP servers, or approved
 projects. If this machine has ignored `config/personal-*` snapshots:
 
-```powershell
-.\Install.ps1 -UsePersonalConfig
-```
-
-These snapshots are not a secret store. Passwords and tokens remain in DPAPI or
-runtime files.
+Personal configuration snapshots are an advanced developer/recovery feature
+and are not part of the public release workflow. Passwords and tokens remain
+in DPAPI or runtime files.
 
 ## 6. Starting the system
 
-Use the **DS_ALGO Local AI - Start** Desktop shortcut, or open a normal
-non-Administrator PowerShell in the project directory:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\Start.ps1 -OpenBrowser
-```
+Use the **DSAlgo Local AI Setup - Start** Desktop or Start Menu shortcut, or
+double-click `start.exe` in the installed release directory.
 
 Windows shows a UAC prompt. That elevated phase starts Docker and container
 services. The original normal-user process then starts Developer Workbench and
 the OAuth broker without Administrator privileges.
 
-Do not launch `Start.ps1` from an already elevated PowerShell window.
-
-If you omit `-OpenBrowser`, services start but no browser tabs are opened.
+The launcher starts services and opens Open WebUI, Local Agent Studio, and
+Developer Workbench in a browser window.
 
 ## 7. Stopping, repairing, removing, and uninstalling
 
@@ -237,9 +216,7 @@ These commands deliberately do different things.
 
 ### Stop and keep everything
 
-```powershell
-.\Stop.ps1
-```
+Double-click `stop.exe` or use its installed shortcut.
 
 This stops services but keeps containers, images, volumes, models,
 configuration, and project data.
@@ -248,19 +225,16 @@ configuration, and project data.
 
 Run from Administrator PowerShell:
 
-```powershell
-.\Repair.ps1
-```
+Double-click `repair.exe` or use its installed shortcut. Approve elevation if
+requested.
 
 Repair stops native services, rebuilds images, recreates the selected
 containers, refreshes shortcuts, and leaves everything stopped. Run
-`Start.ps1` afterward when you are ready.
+`start.exe` afterward when you are ready.
 
 ### Remove project containers
 
-```powershell
-.\Remove.ps1
-```
+Double-click `remove.exe` or use its installed shortcut.
 
 Type `REMOVE` when prompted. This removes project containers and services but
 keeps persistent volumes, models, configuration, source files, and approved
@@ -270,24 +244,17 @@ external project directories.
 
 Run from Administrator PowerShell:
 
-```powershell
-.\Uninstall.ps1
-```
+Double-click `uninstall.exe` or choose **Uninstall** from the installed Start
+Menu folder. Approve elevation if requested.
 
 Type `UNINSTALL` when prompted. Uninstall removes project containers, locally
 built project images, shortcuts, and applications recorded as installed by this
 installer.
 
-Optional destructive cleanup:
-
-```powershell
-.\Uninstall.ps1 -RemoveModels -RemoveData -RemoveWindowsFeatures
-```
-
-The wizard also presents an unchecked **Permanently remove installer-owned
+The wizard presents an unchecked **Permanently remove installer-owned
 Docker images, volumes, and downloaded models** option. Selecting it is
-equivalent to adding `-RemoveImages` together with the model/data cleanup
-switches. Leave it unchecked to retain reusable models and Docker data.
+equivalent to selecting the model/data cleanup options. Leave it unchecked to
+retain reusable models and Docker data.
 
 - `-RemoveModels` deletes models recorded as pulled by this installer.
 - `-RemoveData` deletes project Docker volumes, generated credentials, runtime
@@ -341,6 +308,30 @@ flowchart TD
   and Git.
 
 ## 10. Using Open WebUI
+
+### Image questions with local agents
+
+Image questions sent through an Agent Gateway agent require a vision-capable
+Ollama model, such as a configured Gemma vision variant. The gateway accepts
+local base64 image attachments and rejects remote image URLs by design. If an
+attachment cannot be normalized, Open WebUI should display the returned error;
+select a supported vision model or use a text-only prompt. Vision capability,
+quality, and resource use remain model-specific and are not guaranteed merely
+because a model is downloadable.
+
+The gateway also extracts text from local TXT, Markdown, CSV, PDF, and DOCX
+attachments sent as base64 file blocks. Documents are limited to 20 MB and
+extracted text to approximately 2 million characters. Scanned PDFs without a
+text layer, legacy binary `.doc` files, remote URLs, and unsupported file blocks
+are rejected with an actionable error. Document extraction is bounded and does
+not execute macros, embedded files, or document links.
+
+An agent with the `http_get` permission can fetch public HTTP/HTTPS text or JSON
+through the gateway. The permission exposes a controlled tool; it does not give
+the model unrestricted browsing. For current or external facts, the gateway
+instructs the model to call `http_get`; private addresses and unsupported
+responses remain blocked. In Restricted Online and Strict Offline modes the
+tool is unavailable by policy.
 
 Open `http://localhost:3000`.
 
@@ -629,6 +620,23 @@ after partial progress, but repeated no-tool responses or missing-dependency
 requests become an actionable blocker. The selected agent's `maxSteps` is a
 safety budget capped at 1000, not a completion guarantee.
 
+The Workbench validates tool names and arguments before execution and can repair
+a small set of unambiguous argument-name differences used by local models. A
+malformed request is returned to the model for correction up to three times;
+continued incompatibility ends as `incomplete` with the protocol error shown.
+Goal tasks require verification after their last approved change and reject
+unchanged or suspicious whole-file replacement proposals. These controls make
+model behavior bounded and reviewable, but they do not guarantee that every
+downloadable model can complete coding tasks.
+
+Goal mode does not treat success-text as evidence. Commands that only print a
+completion claim are rejected, including semantically equivalent wording. The
+progress budget advances only for real mutations, recognized verification
+commands, or post-change inspection. Tasks that request compilation, builds, or
+tests must show a successful matching command (or remain explicitly blocked);
+`git diff` alone cannot complete them. One missing-verification repair is
+requested before the task is marked incomplete.
+
 ### Reviewing patches
 
 Check:
@@ -822,17 +830,12 @@ Then fully restart Docker Desktop.
 
 ### Agent Studio or Open WebUI is unavailable
 
-```powershell
-docker compose ps
-.\Health.ps1
-```
+Use the installed `repair.exe` shortcut to rebuild the stack and the
+`start.exe` shortcut to bring services online.
 
 If containers are missing or built from old source:
 
-```powershell
-.\Repair.ps1
-.\Start.ps1
-```
+Double-click `repair.exe`, wait for it to finish, then double-click `start.exe`.
 
 If the Studio or Workbench logo is broken or its browser-tab icon is missing,
 run Repair so the updated backend and static files are installed, start the

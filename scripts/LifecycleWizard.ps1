@@ -14,12 +14,23 @@ if($Operation -eq 'Uninstall'){
 }
 $script:child=$null; $script:started=$false; $script:completedAt=$null
 function Append([string]$s){if($s){$output.AppendText($s.TrimEnd()+[Environment]::NewLine);$output.SelectionStart=$output.TextLength;$output.ScrollToCaret()}}
+function Get-WizardExitCode {
+  if(-not $script:child){ return -1 }
+  try {
+    $script:child.WaitForExit()
+    $script:child.Refresh()
+    return [int]$script:child.ExitCode
+  } catch { }
+  # A completed child should always expose ExitCode. Keep -1 only for a
+  # genuinely unavailable process handle, never for a null property value.
+  return -1
+}
 function Update-WizardProgress {
   if(Test-Path -LiteralPath $script:out){ Append (Get-Content -LiteralPath $script:out -Raw) }
   if(Test-Path -LiteralPath $script:err){ Append (Get-Content -LiteralPath $script:err -Raw) }
   if($script:child -and $script:child.HasExited){
     $script:timer.Stop(); $script:child.Refresh()
-    Append ("Completed with exit code {0}" -f $script:child.ExitCode)
+    Append ("Completed with exit code {0}" -f (Get-WizardExitCode))
     $cancel.Enabled=$false; $next.Text='Close'; $next.Enabled=$true
     $script:completedAt=Get-Date
     $next.Add_Click({$form.Close()})

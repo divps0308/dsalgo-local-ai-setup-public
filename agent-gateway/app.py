@@ -1,6 +1,9 @@
 import ast
+import base64
 import json
+import io
 import math
+import mimetypes
 import operator
 import os
 import re
@@ -9,6 +12,9 @@ import socket
 import subprocess
 import time
 import uuid
+import zipfile
+from html import unescape
+from xml.etree import ElementTree
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -97,6 +103,141 @@ class ChatRequest(BaseModel):
     temperature: float | None = None
     max_tokens: int | None = None
     user: str | None = None
+
+
+_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"}
+_MAX_IMAGE_BYTES = 12 * 1024 * 1024
+_DOCUMENT_MIME_TYPES = {
+    "text/plain": "txt", "text/markdown": "md", "text/csv": "csv",
+    "application/pdf": "pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+}
+_MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
+_MAX_EXTRACTED_DOCUMENT_CHARS = 2_000_000
+
+
+def _image_data_url(value: str) -> str:
+    """Convert a supported data URL into Ollama's base64 image value.
+
+    Remote URLs are intentionally rejected: the gateway must not fetch arbitrary
+    user-supplied URLs or bypass Open WebUI's attachment permissions.
+    """
+    if not isinstance(value, str) or not value.startswith("data:"):
+        raise HTTPException(status_code=400, detail="Image attachments must be local data URLs; remote image URLs are not supported.")
+    header, separator, encoded = value.partition(",")
+    if not separator or ";base64" not in header.lower():
+        raise HTTPException(status_code=400, detail="Image attachment is not a valid base64 data URL.")
+    mime = header[5:].split(";", 1)[0].lower()
+    if mime not in _IMAGE_MIME_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported image type {mime}. Use PNG, JPEG, WEBP, or GIF.")
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except (ValueError, base64.binascii.Error) as exc:
+        raise HTTPException(status_code=400, detail="Image attachment contains invalid base64 data.") from exc
+    if not raw:
+        raise HTTPException(status_code=400, detail="Image attachment is empty.")
+    if len(raw) > _MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image attachment exceeds the 12 MB limit.")
+    return base64.b64encode(raw).decode("ascii")
+
+
+def _data_url_bytes(value: str, kind: str) -> tuple[str, bytes]:
+    if not isinstance(value, str) or not value.startswith("data:"):
+        raise HTTPException(status_code=400, detail=f"{kind} attachments must be local data URLs; remote URLs are not supported.")
+    header, separator, encoded = value.partition(",")
+    if not separator or ";base64" not in header.lower():
+        raise HTTPException(status_code=400, detail=f"{kind} attachment is not a valid base64 data URL.")
+    mime = header[5:].split(";", 1)[0].lower()
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except (ValueError, base64.binascii.Error) as exc:
+        raise HTTPException(status_code=400, detail=f"{kind} attachment contains invalid base64 data.") from exc
+    if not raw:
+        raise HTTPException(status_code=400, detail=f"{kind} attachment is empty.")
+    limit = _MAX_IMAGE_BYTES if kind == "Image" else _MAX_DOCUMENT_BYTES
+    if len(raw) > limit:
+        raise HTTPException(status_code=413, detail=f"{kind} attachment exceeds the {limit // (1024 * 1024)} MB limit.")
+    return mime, raw
+
+
+def _extract_document(mime: str, raw: bytes) -> str:
+    kind = _DOCUMENT_MIME_TYPES.get(mime)
+    if not kind:
+        raise HTTPException(status_code=400, detail=f"Unsupported document type {mime}. Supported types are TXT, Markdown, CSV, PDF, and DOCX.")
+    if kind in {"txt", "md", "csv"}:
+        text = raw.decode("utf-8", errors="replace")
+    elif kind == "docx":
+        try:
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                xml = archive.read("word/document.xml")
+            root = ElementTree.fromstring(xml)
+            text = "\n".join(unescape(node.text or "") for node in root.iter() if node.tag.endswith("}t"))
+        except (KeyError, OSError, ElementTree.ParseError) as exc:
+            raise HTTPException(status_code=400, detail="DOCX attachment is corrupt or missing document content.") from exc
+    else:
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(raw))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        except ImportError as exc:
+            raise HTTPException(status_code=503, detail="PDF extraction is unavailable because the gateway PDF parser is not installed.") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="PDF attachment could not be read.") from exc
+    text = text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="Document contains no extractable text.")
+    if len(text) > _MAX_EXTRACTED_DOCUMENT_CHARS:
+        text = text[:_MAX_EXTRACTED_DOCUMENT_CHARS] + "\n[Document text truncated]"
+    return text
+
+
+def normalize_messages_for_ollama(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Normalize OpenAI text/image blocks to Ollama chat messages.
+
+    Text-only messages are returned with their existing shape. OpenAI image
+    blocks become Ollama's ``images`` array while text blocks are joined into a
+    normal string. Tool-call fields are preserved unchanged.
+    """
+    normalized: list[dict[str, Any]] = []
+    for message in messages:
+        item = dict(message)
+        content = item.get("content")
+        if not isinstance(content, list):
+            normalized.append(item)
+            continue
+        text_parts: list[str] = []
+        images: list[str] = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            kind = block.get("type")
+            if kind == "text":
+                text_parts.append(str(block.get("text", "")))
+            elif kind == "image_url":
+                image_url = block.get("image_url")
+                image_url = image_url.get("url") if isinstance(image_url, dict) else image_url
+                images.append(_image_data_url(image_url))
+            elif kind in {"image", "input_image"}:
+                source = block.get("source") or block.get("image") or block.get("data")
+                if isinstance(source, dict):
+                    source = source.get("data") or source.get("url")
+                images.append(_image_data_url(source))
+            elif kind in {"file", "input_file", "document"}:
+                source = block.get("file_data") or block.get("file_url") or block.get("data") or block.get("source")
+                if isinstance(source, dict):
+                    source = source.get("url") or source.get("data")
+                if isinstance(source, str) and not source.startswith("data:") and not source.startswith("http"):
+                    filename = block.get("filename") or block.get("file_name") or "attachment"
+                    guessed = mimetypes.guess_type(str(filename))[0] or "application/octet-stream"
+                    source = f"data:{guessed};base64,{source}"
+                mime, raw = _data_url_bytes(source, "Document")
+                text_parts.append("[Attached document]\n" + _extract_document(mime, raw) + "\n[End attached document]")
+            else:
+                raise HTTPException(status_code=400, detail=f"Unsupported multimodal content block: {kind or 'unknown'}.")
+        item["content"] = "\n".join(part for part in text_parts if part).strip()
+        if images:
+            item["images"] = images
+        normalized.append(item)
+    return normalized
 
 
 def check_auth(authorization: str | None) -> None:
@@ -464,6 +605,10 @@ def invoke_tool(name: str, arguments: Any, allowed: set[str], mcp_mapping: dict[
 
 def ollama_chat(model: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None, temperature: float | None = None) -> dict[str, Any]:
     model_cfg = next((v for v in load_model_registry().get("models", {}).values() if v.get("ollamaTag") == model), {})
+    messages = normalize_messages_for_ollama(messages)
+    has_images = any(bool(message.get("images")) for message in messages)
+    if has_images and model_cfg.get("vision") is False:
+        raise HTTPException(status_code=400, detail=f"Configured model {model} is not marked as vision-capable. Select a vision-capable Ollama model.")
     # Only send tools if the model is explicitly configured to support tool-calling
     tool_capable = bool(model_cfg.get("toolCalling", True))
     effective_tools = tools if (tools and tool_capable) else None
@@ -491,21 +636,119 @@ def ollama_chat(model: str, messages: list[dict[str, Any]], tools: list[dict[str
             raise
 
 
+def parse_compatibility_tool_calls(content: Any, allowed: set[str]) -> list[dict[str, Any]]:
+    """Recover narrowly formatted tool requests emitted as ordinary model text.
+
+    Some Ollama models describe a call in a ``tool_code`` block instead of
+    returning Ollama's structured ``tool_calls`` field.  Only an explicit,
+    allow-listed function invocation is recovered; arbitrary prose is never
+    executed.  This keeps the existing permission and policy checks in
+    ``invoke_tool`` as the final security boundary.
+    """
+    if not isinstance(content, str) or not content.strip():
+        return []
+    candidates: list[str] = []
+    fenced = re.findall(r"```(?:tool_code|tool|python|json)?\s*\n?(.*?)```", content, flags=re.IGNORECASE | re.DOTALL)
+    candidates.extend(fenced)
+    # Also support models that omit the fence but put the call on its own line.
+    candidates.extend(line.strip() for line in content.splitlines() if "(" in line or line.lstrip().startswith("{"))
+    recovered: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for candidate in candidates:
+        text = candidate.strip()
+        if not text:
+            continue
+        # JSON tool-call objects are accepted only when they name a known tool.
+        values: list[Any] = []
+        if text.startswith("{") and text.endswith("}"):
+            try:
+                values.append(json.loads(text))
+            except (TypeError, ValueError):
+                try:
+                    values.append(ast.literal_eval(text))
+                except (SyntaxError, ValueError):
+                    pass
+        match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)", text, flags=re.DOTALL)
+        if match:
+            name, raw_args = match.group(1), match.group(2).strip()
+            if name not in allowed:
+                continue
+            try:
+                parsed = json.loads(raw_args) if raw_args else {}
+            except (TypeError, ValueError):
+                try:
+                    parsed = ast.literal_eval(raw_args) if raw_args else {}
+                except (SyntaxError, ValueError):
+                    continue
+            if isinstance(parsed, dict):
+                values.append({"name": name, "arguments": parsed})
+            elif isinstance(parsed, str) and name == "http_get":
+                values.append({"name": name, "arguments": {"url": parsed}})
+        # Accept keyword arguments and simple Python literals without ever
+        # evaluating the expression (AST parsing is deliberately non-executing).
+        if not match:
+            try:
+                expression = ast.parse(text, mode="eval").body
+                if isinstance(expression, ast.Call) and isinstance(expression.func, ast.Name):
+                    name = expression.func.id
+                    if name in allowed and not expression.args:
+                        parsed = {item.arg: ast.literal_eval(item.value) for item in expression.keywords if item.arg}
+                        values.append({"name": name, "arguments": parsed})
+            except (SyntaxError, ValueError, TypeError):
+                pass
+        for value in values:
+            if not isinstance(value, dict):
+                continue
+            function = value.get("function") if isinstance(value.get("function"), dict) else value
+            name = function.get("name") or value.get("name") or value.get("tool")
+            args = function.get("arguments", function.get("args", value.get("arguments", {})))
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except (TypeError, ValueError):
+                    try:
+                        args = ast.literal_eval(args)
+                    except (SyntaxError, ValueError):
+                        continue
+            if name not in allowed or name not in TOOL_DEFS or not isinstance(args, dict):
+                continue
+            marker = (name, json.dumps(args, sort_keys=True, ensure_ascii=False))
+            if marker not in seen:
+                seen.add(marker)
+                recovered.append({"function": {"name": name, "arguments": args}})
+    return recovered
+
+
 def run_agent(profile: str, incoming: list[dict[str, Any]], extra_system: str = "", temperature: float | None = None) -> tuple[str, list[dict[str, Any]]]:
     agent = effective_agents().get(profile)
     if not agent: raise HTTPException(status_code=404, detail=f"Unknown agent model: {profile}")
     model, model_cfg = model_for_agent(agent)
-    system = agent.get("instructions", "") + ("\n\n" + extra_system if extra_system else "")
-    messages = [{"role": "system", "content": system}]
-    messages.extend({k: v for k, v in m.items() if k in {"role", "content", "name", "tool_calls"}} for m in incoming)
     defs, mcp_mapping = tools_for_agent(agent)
     allowed = {item["function"]["name"] for item in defs if item.get("function", {}).get("name") in TOOL_DEFS}
+    system = agent.get("instructions", "") + ("\n\n" + extra_system if extra_system else "")
+    if "http_get" in allowed:
+        system += ("\n\nLIVE WEB ACCESS: You have an http_get tool. When the user asks about "
+                   "current, external, or internet information, you MUST call http_get "
+                   "before answering. Do not claim that you lack internet access unless "
+                   "the tool call fails; report the tool error clearly instead.")
+    else:
+        system += ("\n\nWEB ACCESS: You do not have an internet-fetch tool in this request. "
+                   "Do not imply that you performed live web access.")
+    messages = [{"role": "system", "content": system}]
+    messages.extend({k: v for k, v in m.items() if k in {"role", "content", "name", "tool_calls"}} for m in incoming)
     trace: list[dict[str, Any]] = []
     for step in range(int(agent.get("maxSteps", MAX_STEPS))):
         result = ollama_chat(model, messages, defs, temperature)
         assistant = result.get("message", {})
         messages.append(assistant)
         calls = assistant.get("tool_calls") or []
+        if not calls:
+            calls = parse_compatibility_tool_calls(assistant.get("content"), allowed)
+            if calls:
+                # Normalize the recovered request to Ollama's native shape
+                # before sending the subsequent role=tool result back.
+                messages[-1] = {"role": "assistant", "content": "", "tool_calls": calls}
+                trace.append({"step": step + 1, "event": "recovered_text_tool_call", "result": "Recovered an explicit allow-listed tool request emitted as model text."})
         if not calls: return assistant.get("content", ""), trace
         for call in calls:
             fn = call.get("function", {}); name = fn.get("name", ""); args = fn.get("arguments", {})

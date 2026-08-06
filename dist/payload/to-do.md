@@ -1,7 +1,21 @@
 # Limitations and To-Do Register
 
+- Backend: Validate multimodal agent requests end to end with Open WebUI
+  attachments across supported vision and document models. The gateway accepts
+  local base64 image and document blocks, while remote attachment URLs and
+  unsupported content types are intentionally rejected until an authenticated
+  attachment-transfer contract is defined.
+
 - Validate lifecycle wizard progress streaming and cancellation across
   elevated and non-elevated operation paths.
+
+- Architectural: Review for additional obsolete compatibility entry points
+  after the first public release; this cleanup removed only root scripts with
+  no active references and retained every documented lifecycle operation.
+
+- Backend: Validate text-serialized JSON tool-call recovery across the supported
+  small Ollama coding models; the compatibility path is intentionally limited
+  to one exact `{name, arguments}` object and still requires normal approvals.
 
 - Consolidate lifecycle operations into a shared single-window progress wizard
   with Next/Cancel navigation and captured stdout/stderr.
@@ -19,6 +33,27 @@
 - Validate elevated installation ACLs when the interactive Windows account
   differs from the Administrator account; native Workbench and OAuth must be
   able to write runtime state as the signed-in user.
+
+## Independent audit follow-up
+
+- Validate structured-tool capability for every catalog and user-managed model
+  before allowing Goal mode; models without tool calling remain Ask/Plan-only.
+- Expand patch validation and model-specific protocol tests across representative
+  Ollama releases, including malformed fenced file content and prose-only
+  continuation loops.
+
+- Audit finding: installation, lifecycle recovery, and hardware-path coverage
+  remain controlled-beta concerns. Public release material should describe the
+  installer as broadly validated only after representative preflight,
+  post-install, and compatibility-matrix results are available.
+
+- Add a task-based local landing page that explains when to use Open WebUI,
+  Agent Studio, Workbench, and Health, with persistent badges for local model,
+  local agent/tools, and external MCP enabled.
+
+- Improve Health and lifecycle UI with one-screen component diagnosis,
+  actionable safe fixes, GPU placement and RAM/VRAM/Docker allocation, and
+  links to relevant redacted log sections.
 
 ## Current release-readiness caveats
 
@@ -200,11 +235,11 @@
 
 ### Deliberate non-goals
 
-- Do not claim universal installation or execution on every machine
-  configuration. The installer must detect unsupported operating systems,
-  hardware, drivers, virtualization, WSL2, Docker, and storage conditions and
-  stop with an actionable report; expanding support requires a separately
-  validated compatibility profile.
+- Universal installation or execution across every machine configuration is not
+  a release claim. Unsupported operating systems, hardware, drivers,
+  virtualization, WSL2, Docker, and storage conditions require detection and an
+  actionable report; expanding support requires a separately validated
+  compatibility profile.
 
 - Public or LAN exposure without dedicated authentication, authorization, TLS,
   tenancy, and security design.
@@ -379,8 +414,9 @@ resolution in `CHANGELOG.md` and any resulting decision in `decision-log.md`.
 - Approved projects cannot be edited in place; remove and re-register them.
 - A project cannot be removed while a task is running or awaiting approval.
 - Removing a project never deletes its files.
-- Model-role selection uses `coder`, `general`, and `reasoning`; it does not
-  dynamically list arbitrary Agent Studio agents.
+- Workbench task selection uses enabled sample/custom Agent Studio agents by
+  stable ID and their configured backing model. Validate stale, disabled, and
+  missing-model configurations in packaged installs.
 - Tasks use a process-local background thread rather than a durable distributed
   queue. Process interruption can interrupt an active task.
 - Native command support depends on executables already installed and visible
@@ -462,6 +498,15 @@ resolution in `CHANGELOG.md` and any resulting decision in `decision-log.md`.
   disabled agents, missing model tags, and stale installed configuration.
 - Rebuild and package the Workbench static bundle after agent selection changes.
 - [ ] Workbench task quality: validate model completion evidence and preserve an explicit incomplete state when a model stops after proposals or failed commands; validate multilingual/UTF-8 tool output across Windows encodings.
+- [ ] Validate evidence accounting across representative models: semantic
+  duplicate claim commands, claim-only completion repair, mutation/inspection
+  progress resets, and compilation requests that require successful build/test
+  evidence rather than a diff alone.
+- [ ] Workbench protocol interoperability: validate the versioned JSON tool-call
+  and tool-result envelopes across representative Ollama models, including
+  malformed JSON, prose-only action requests, unsupported tool calling, and
+  completion-quality evidence. Do not treat protocol compatibility as a claim
+  that every model can reliably perform structured actions.
 - [ ] Workbench modes: validate Ask (read/answer), Plan (read-only plan artifact), and Goal (approval-gated execution) across the packaged UI and installed payload.
 ### Workbench follow-up
 
@@ -494,8 +539,19 @@ resolution in `CHANGELOG.md` and any resulting decision in `decision-log.md`.
   safety behavior when no installer-state marker exists.
 ### Public distribution controls
 
+- [ ] Keep the Help Center synchronized with every Studio and Workbench screen;
+      add coverage for new controls, side effects, permissions, policy modes,
+      approval behavior, and troubleshooting as the UI evolves.
+
 - [ ] Configure GitHub branch protection, required CI checks, and owner-only
       release-environment approval before the first public release.
 - [ ] Add a generated third-party license/dependency inventory to release
       artifacts; do not place private signing material in the repository.
 - [ ] Validate the installer license acceptance gate on clean Windows machines.
+- [ ] Validate no-op proposal handling and repeated identical tool-call guards
+  across models and multi-file Goal tasks.
+- [ ] Validate canonical argument schemas, compatibility aliases, three-turn
+  protocol repair, focused-edit rejection, exploration-loop bounds, and
+  post-mutation verification against representative Ollama model families.
+  Record model-specific incompatibilities rather than treating downloadability
+  as Goal-mode support.

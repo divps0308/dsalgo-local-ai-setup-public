@@ -6,7 +6,12 @@ Build and evolve a private, practical local agent platform on Windows 11.
 Favor dependable operation, bounded resource use, local data control, and
 maintainability over maximum benchmark scores. The current validated baseline
 is a Windows/NVIDIA CUDA workstation path; broader hardware remains controlled
-beta until tested.
+beta until tested. An independent audit rated local capability and security
+boundaries strong for this scope, but installation, reliability, and
+documentation release readiness moderate. The release bar therefore includes
+blocking preflight and post-install checks, a versioned compatibility matrix,
+clearer task-based navigation, and reconciliation of contradictory
+documentation.
 
 The current implementation is version 5. It is designed for:
 
@@ -160,7 +165,10 @@ allowing Open WebUI to treat agent profiles as selectable models.
 The native Workbench provides Ask, Plan, and Goal task modes. Ask is read-only;
 Plan saves a unique timestamped Markdown plan under the approved project; Goal
 continues approval-gated work until verification or a concrete blocker. Edits
-and commands must arrive as structured tool calls so the UI can show approval.
+and commands must arrive as schema-validated structured tool calls so the UI
+can show approval. The controller owns protocol repair, focused-edit checks,
+loop bounds, execution, and post-change verification; model prose is never an
+execution instruction.
 
 ## Resource policy
 

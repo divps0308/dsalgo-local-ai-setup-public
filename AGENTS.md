@@ -1,4 +1,4 @@
-# Codex guidance for DSAlgo Local AI Setup
+# Maintainer guidance for DSAlgo Local AI Setup
 
 ## Project purpose
 
@@ -6,11 +6,11 @@ This repository implements a single-user, self-hosted AI workstation for
 Windows 10/11. Hardware is detected during installation and the system
 coexists with Docker Desktop/WSL2.
 
-Read `agentic-dev-instructions.md`, `dev-guide.md`,
+Maintainers and contributors should review `agentic-dev-instructions.md`, `dev-guide.md`,
 `docs/PROJECT_CONTEXT.md`, and the relevant implementation files before making
-architectural or operational changes. Treat `README.md` as the concise landing
-page, `user-guide.md` as the user-facing operations authority, and
-`dev-guide.md` as the contributor architecture authority.
+architectural or operational changes. `README.md` is the concise landing page,
+`user-guide.md` is the user-facing operations authority, and `dev-guide.md` is
+the contributor architecture authority.
 
 ## Architectural invariants
 
@@ -34,6 +34,9 @@ page, `user-guide.md` as the user-facing operations authority, and
 - Native Developer Workbench access stays confined to explicit roots in
   `config/projects.json`; model-proposed writes, deletes, and commands must
   remain approval-gated.
+- Goal-mode model output is untrusted protocol data. Validate complete tool
+  arguments before dispatch, keep aliases deterministic, bound repair and loop
+  behavior, and require post-mutation verification before completion.
 - OAuth-protected MCP credentials stay in the native Windows broker's
   DPAPI-protected store; containers may request short-lived access tokens but
   must not persist refresh tokens.
