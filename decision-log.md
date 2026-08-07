@@ -817,6 +817,8 @@ before displaying the acceptance page.
 
 ### D-067 - Derive WSL resources from detected hardware (2026-08-06)
 
+**Superseded by D-070 for the allocation policy; hardware detection remains.**
+
 The installer now writes the WSL/Docker core profile from detected logical
 processors and system RAM. Comfortable reserves roughly 35% of RAM and half
 the logical processors; Aggressive reserves roughly 15% and permits all
@@ -824,3 +826,175 @@ logical processors. Swap is derived from the selected memory limit and capped
 at 16 GB. Existing `.wslconfig` values continue to win during conservative
 merge.
 
+# D-068: Conservative WSL merge and Docker readiness
+
+- **Decision:** Preserve existing `.wslconfig` resource values when they are
+  equal to or above the generated recommendation. If memory, processors, or
+  swap are below it, offer an explicit overwrite (with the existing backup
+  path shown) or exit without changes. Check Docker Desktop for updates and
+  wait up to ten minutes for the engine before proceeding.
+- **Rationale:** User-owned WSL settings should not trigger unnecessary
+  warnings, while undersized settings need an informed, reversible choice.
+  Docker startup and update time vary substantially across machines.
+- **Consequence:** Users may retain larger-than-recommended WSL allocations;
+  update checks depend on winget, and Docker readiness can delay installation.
+# D-069: PowerShell-compatible configuration expressions
+
+- **Decision:** Evaluate conditional resource and model configuration values
+  in intermediate variables before using them in arithmetic or hashtables.
+- **Rationale:** Windows PowerShell does not accept every inline `if` form as
+  an expression; the packaged wizard must work on the supported shell.
+- **Consequence:** The generated configuration is unchanged, but preparation
+  avoids the misleading “if is not recognized” failure.
+# D-070: Fixed 50% resource allocation
+
+- **Decision:** The installer no longer asks users to choose Comfortable or
+  Aggressive allocation. It generates WSL/Docker memory, processor, and swap
+  from approximately half of detected RAM and logical processors. GPU model
+  recommendations may use the full detected dedicated VRAM; Ollama manages
+  actual GPU utilization at runtime.
+- **Rationale:** A single conservative default is easier to understand and
+  keeps comparable behavior across machines while preserving resources for
+  Windows and native Ollama.
+- **Consequence:** Users who need a different split must edit `.wslconfig`
+  after installation; lower existing values still require explicit overwrite.
+
+# D-071: Keep fixed-allocation guidance below preference controls
+
+- **Decision:** Place the fixed resource-allocation explanation below the
+  provenance controls in the installer wizard.
+- **Rationale:** The previous position overlapped the model provenance row on
+  compact Windows rendering and made the form difficult to read.
+- **Consequence:** The page uses the existing vertical space more deliberately
+  without changing any selection or recommendation behavior.
+
+# D-072: Pin release builds to Node 24
+
+- **Decision:** Release Actions use Node.js 24, and both Vite app roots provide
+  explicit Svelte configuration. The known legacy form-dialog diagnostic is
+  filtered while preserving other compiler warnings.
+- **Rationale:** Keep release tooling current and eliminate non-actionable
+  frontend build noise without changing application behavior.
+- **Consequence:** Node 24 is now part of the release build requirement and
+  frontend accessibility changes should still be reviewed when dialog markup
+  is next refactored.
+
+# D-073: Show complete model catalog classification
+
+- **Decision:** Display all catalog models in recommended, supported-but-
+  filtered, and unsupported categories. Only the first two are selectable,
+  with a maximum of three models.
+- **Rationale:** Users can see why a model was not recommended without losing
+  hardware and preference safety filtering.
+- **Consequence:** The review page contains more categorized rows; eligibility
+  remains enforced by RAM and VRAM thresholds.
+
+# D-074: Use explicit PowerShell constructor arguments in dynamic UI layout
+
+- **Decision:** Construct dynamic WinForms points and sizes with
+  `New-Object -ArgumentList`.
+- **Rationale:** Windows PowerShell 5.1 can interpret parenthesized constructor
+  syntax as multiple command arguments, causing the categorized review page to
+  fail before it renders.
+- **Consequence:** The layout is compatible with both source execution and
+  PS2EXE-generated installers.
+
+# D-075: Allocate 20% RAM to WSL/Docker
+
+- **Decision:** Generate the WSL memory limit from approximately 20% of
+  detected system RAM, retain 50% of logical processors for WSL, and use the
+  remaining approximately 80% RAM for native Ollama model recommendations.
+- **Rationale:** The container stack is lighter than model inference, so a
+  smaller WSL memory cap leaves more host RAM for native Ollama.
+- **Consequence:** Low-memory systems may still need a larger custom
+  `.wslconfig`; the existing lower-value overwrite prompt remains in force.
+
+# D-076: Foreground installer dialogs
+
+- **Decision:** Installer message boxes are owned by the visible wizard or a
+  temporary topmost owner window.
+- **Rationale:** Child configuration processes can otherwise display warnings
+  behind the main installer, making required decisions appear to be missing.
+- **Consequence:** Dialogs remain modal and appear in front of other windows;
+  no installation behavior or message content changes.
+
+# D-077: Foreground all executable wizard dialogs
+
+- **Decision:** Keep lifecycle wizard forms topmost and make the installer
+  folder picker an owned dialog, alongside existing owned message boxes.
+- **Rationale:** Every user decision or picker must remain visible when other
+  windows have focus.
+- **Consequence:** Dialog modality and normal cancellation behavior are
+  preserved across lifecycle executables.
+
+# D-078: Keep child WSL prompt foreground during choice
+
+- **Decision:** Use a visible, borderless, activated topmost owner for the
+  WSL confirmation message box and pump WinForms events before showing it.
+- **Rationale:** A transparent 1x1 owner could lose foreground priority to the
+  parent installer while the modal prompt was still open.
+- **Consequence:** The prompt remains associated with the child configuration
+  process until the user selects an option.
+# D-079: Make categorized model selection state explicit
+
+- **Decision:** Commit checkbox edits from each selectable category grid using
+  its event sender, and label categories with more than two rows as scrollable.
+- **Rationale:** A shared closure could commit the wrong grid, causing the
+  summary count to lag behind visible selections; compact grids need a clear
+  affordance for additional rows.
+- **Consequence:** Selection counts update consistently across categories and
+  users are told when scrolling is required.
+
+# D-080: Use a dedicated topmost WSL decision form
+
+- **Decision:** Show WSL overwrite/exit choices in a dedicated topmost modal
+  form rather than a child-process message box.
+- **Rationale:** The parent installer can reclaim foreground focus from a
+  standard message box after startup.
+- **Consequence:** The prompt has explicit Overwrite and Exit labels and stays
+  modal until the user makes a choice.
+
+# D-081: Fail visibly if the WSL prompt cannot initialize
+
+- **Decision:** Make the WSL prompt taskbar-visible and provide a visible
+  message-box fallback instead of reading hidden console input.
+- **Rationale:** A failed child GUI prompt must never leave the installer
+  blocked indefinitely.
+- **Consequence:** Prompt initialization failures now surface as an explicit
+  error or fallback dialog.
+
+# D-083: Do not fallback after an intentional WSL exit
+
+- **Decision:** Treat the primary dialog's Exit result as a terminal user
+  decision and bypass fallback prompt handling.
+- **Rationale:** Catch-all fallback logic previously interpreted the deliberate
+  cancellation exception as a prompt failure, creating a duplicate dialog.
+- **Consequence:** Exit produces one prompt and a clean setup stop; fallback is
+  reserved for genuine dialog initialization failures.
+
+# D-084: Persist WSL overwrites without duplicate keys
+
+- **Decision:** Treat existing WSL keys as replacements, not missing entries,
+  and persist changes even when the number of lines is unchanged.
+- **Rationale:** The previous merge appended replacement values and skipped the
+  write when only existing lines changed.
+- **Consequence:** Overwrite produces one authoritative memory, processor, and
+  swap entry per section.
+
+# D-085: Handle winget no-update result
+
+- **Decision:** Suppress Docker update warnings when winget explicitly reports
+  that no newer package version is available.
+- **Rationale:** winget returns a non-zero status for this informational result
+  on some versions, even though the update check succeeded.
+- **Consequence:** Genuine update-check failures remain warnings with log
+  paths; an already-current Docker Desktop install is silent.
+
+# D-082: Release persistent installer foreground forcing
+
+- **Decision:** Make the installer topmost only during its initial display,
+  then clear `TopMost` and remove the foreground-reassertion timer.
+- **Rationale:** Persistent foreground forcing displaced child dialogs and
+  prevented users from moving the installer behind other windows.
+- **Consequence:** The parent wizard behaves as a normal window after launch;
+  its owned modal dialogs still remain in front while active.

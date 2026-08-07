@@ -2,20 +2,27 @@
 
 This guide explains how to install, start, use, maintain, repair, and remove
 DSAlgo Local AI Setup. It assumes you are comfortable opening PowerShell, but it
-does not assume Docker, WSL, Ollama, Git, or AI-agent experience.
+ does not assume Docker, WSL, Ollama, Git, or AI-agent experience.
 
 ## Installer model preferences
 
 Choose General Conversation, Reasoning, Coding, Deep Research, or All. Ollama
-is always the local runtime. Comfortable preserves more capacity for Windows,
-Docker Desktop, browsers, and development tools; Aggressive permits larger
-compatible models with less headroom.
+is always the local runtime. The installer uses a fixed split: about 20% of
+detected RAM and 50% of logical processors is available to WSL/Docker, with
+the remainder preserved for Windows and native Ollama. On GPU machines, model
+recommendations may use up to 100% of detected dedicated VRAM; Ollama manages
+actual GPU utilization while running.
 
 Provenance is optional. None disables and ignores organization/country
 filters. Prefer raises matching models, Avoid lowers them, and Require only
 permits a model matching the selected organization or country. Require needs
 at least one specific selection. After confirmation, setup downloads the
 chosen models and creates enabled sample general, coding, and research agents.
+
+The review page shows the complete catalog in three groups: recommended
+models, models supported by the detected hardware but filtered out by the
+selected use case or provenance preferences, and unsupported models. Only the
+first two groups can be selected, with at least one and at most three models.
 
 The recommendation table marks whether each candidate fits general
 conversation, coding, reasoning, document work, or all four categories.
@@ -140,10 +147,12 @@ The installer:
 3. Saves installation progress before any required restart.
 4. Installs or updates the WSL package and selects WSL2.
 5. Installs Python, Ollama, and Docker Desktop when they are missing.
-6. Backs up an existing `.wslconfig`, preserves its existing values, and merges
-   only missing DSAlgo settings. If the file contains conflicting, duplicate,
-   or unparseable settings, the installer explains the issue and lets you
-   continue with preserved values or abort to remediate it first.
+6. Generates a hardware-safe WSL profile using approximately 50% of detected
+   RAM and logical processors (with derived swap). An existing `.wslconfig`
+   is backed up and values equal to or above the recommendation proceed
+   silently; lower memory, processor, or swap values trigger an explicit
+   overwrite-or-exit prompt that displays the absolute backup path. The
+   installer never writes values above the generated hardware-safe limits.
 7. Shuts down WSL so the new resource limits take effect.
 8. Starts Docker Desktop and waits until Docker is ready.
 9. Creates `.env` with generated local credentials and converts the Windows

@@ -51,6 +51,7 @@ $form.StartPosition = 'CenterScreen'
 $form.TopMost = $true
 $form.FormBorderStyle = 'FixedDialog'
 $form.MaximizeBox = $false
+$form.Add_Shown({ $form.BringToFront(); $form.Activate(); $form.TopMost = $false })
 
 $label = New-Object Windows.Forms.Label
 $label.Text = 'Installation folder:'
@@ -67,14 +68,14 @@ $browse.Text = 'Browse...'; $browse.Left = 490; $browse.Top = 50; $browse.Width 
 $browse.Add_Click({
     $dialog = New-Object Windows.Forms.FolderBrowserDialog
     $dialog.SelectedPath = $pathBox.Text
-    if ($dialog.ShowDialog() -eq [Windows.Forms.DialogResult]::OK) { $pathBox.Text = $dialog.SelectedPath }
+    if ($dialog.ShowDialog($form) -eq [Windows.Forms.DialogResult]::OK) { $pathBox.Text = $dialog.SelectedPath }
 })
 $form.Controls.Add($browse)
 
 $install = New-Object Windows.Forms.Button
 $install.Text = 'Install'; $install.Left = 390; $install.Top = 110; $install.Width = 90
 $install.Add_Click({
-    if ([string]::IsNullOrWhiteSpace($pathBox.Text)) { [Windows.Forms.MessageBox]::Show('Choose an installation folder.'); return }
+    if ([string]::IsNullOrWhiteSpace($pathBox.Text)) { [Windows.Forms.MessageBox]::Show($form,'Choose an installation folder.'); return }
     $form.Tag = [pscustomobject]@{ Path = $pathBox.Text; UseCase = [string]$useCase.SelectedItem }
     $form.DialogResult = [Windows.Forms.DialogResult]::OK
     $form.Hide()
@@ -124,7 +125,7 @@ if ($null -eq $freeBytes) {
     try { $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$driveLetter'" -ErrorAction Stop; $freeBytes = [int64]$disk.FreeSpace } catch { }
 }
 if ($null -ne $freeBytes -and $freeBytes -lt 30GB) { throw "At least 30 GiB of free space is required on $driveLetter before installation." }
-if ($null -eq $freeBytes) { [Windows.Forms.MessageBox]::Show("Unable to verify free space on $driveLetter. Installation will continue only after you confirm.", 'Disk check warning', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Warning) | Out-Null }
+if ($null -eq $freeBytes) { [Windows.Forms.MessageBox]::Show($form,"Unable to verify free space on $driveLetter. Installation will continue only after you confirm.", 'Disk check warning', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Warning) | Out-Null }
 
 Get-ChildItem -LiteralPath $sourceRoot -Force |
     Where-Object { $_.Name -notin @('.git','dist','artifacts','.env','runtime','backups','node_modules','.pnpm-store') } |
