@@ -54,11 +54,10 @@ function Get-Hardware {
   [pscustomobject]@{Cpu=$cpu;CpuCores=[math]::Max(1,$cpuCores);RamGiB=$ram;Gpu=$gpu;VramGiB=$vram}
 }
 
-function Get-ResourceProfile($hardware,[string]$allocation){
-  $ramReserve=if($allocation-eq'Comfortable'){.35}else{.15}
-  $memory=[math]::Max(2,[math]::Floor($hardware.RamGiB*(1-$ramReserve)))
-  $processors=if($allocation-eq'Comfortable'){[math]::Max(2,[math]::Floor($hardware.CpuCores*.5))}else{[math]::Max(2,$hardware.CpuCores)}
-  $swap=[math]::Min(16,[math]::Max(2,[math]::Ceiling($memory*(if($allocation-eq'Comfortable'){.5}else{.75}))))
+function Get-ResourceProfile($hardware){
+  $memory=[math]::Max(2,[math]::Floor($hardware.RamGiB*.2))
+  $processors=[math]::Max(2,[math]::Floor($hardware.CpuCores*.5))
+  $swap=[math]::Min(16,[math]::Max(2,[math]::Ceiling($memory*.5)))
   [ordered]@{dockerMemoryGB=[int]$memory;dockerProcessors=[int]$processors;dockerSwapGB=[int]$swap}
 }
 
@@ -70,25 +69,26 @@ function Get-Catalog {
   throw 'The embedded model catalog could not be found.'
 }
 
-function Get-Recommendations($hardware,$useCase,$allocation,$preferenceMode,$vendor,$country){
-  $ramReserve=if($allocation-eq'Comfortable'){[math]::Max(8,$hardware.RamGiB*.35)}else{[math]::Max(4,$hardware.RamGiB*.15)}
-  $vramReserve=if($allocation-eq'Comfortable'){[math]::Max(2,$hardware.VramGiB*.20)}else{[math]::Max(1,$hardware.VramGiB*.10)}
-  $ramBudget=$hardware.RamGiB-$ramReserve;$vramBudget=$hardware.VramGiB-$vramReserve
+function Get-Recommendations($hardware,$useCase,$preferenceMode,$vendor,$country){
+  $ramBudget=[math]::Floor($hardware.RamGiB*.8)
+  # GPU-backed models may use the full detected dedicated VRAM. Ollama's
+  # runtime scheduler manages actual GPU utilization.
+  $vramBudget=[math]::Floor($hardware.VramGiB)
   $models=@((Get-Catalog).models)
   $tasks=switch($useCase){'GeneralChat'{@('GeneralChat')}'Reasoning'{@('Reasoning')}'Coding'{@('Coding')}'DeepResearch'{@('DocumentQa','Reasoning')}'All'{@('GeneralChat','Reasoning','Coding','DocumentQa')}default{@('GeneralChat')}}
-  $results=@()
+  $results=@();$supported=@();$unsupported=@()
   foreach($m in $models){
     $taskMatches=@($tasks|Where-Object{$m.tasks-contains$_}).Count
-    if($taskMatches-eq0){continue}
-    if([double]$m.minRamGiB-gt$ramBudget-or[double]$m.minVramGiB-gt$vramBudget){continue}
+    $hardwareFit=[double]$m.minRamGiB -le $ramBudget -and [double]$m.minVramGiB -le $vramBudget
     $vendorMatch=$vendor-ne'Any'-and$m.organization-eq$vendor;$countryMatch=$country-ne'Any'-and$m.country-eq$country
-    if($preferenceMode-eq'Require'-and-not($vendorMatch-or$countryMatch)){continue}
+    $filterFit=$taskMatches -gt 0 -and -not($preferenceMode-eq'Require'-and-not($vendorMatch-or$countryMatch))
     $score=300+($taskMatches*100)+[int]$m.qualityScore
-    if($vendorMatch){$score+=if($preferenceMode-eq'Avoid'){-120}elseif($preferenceMode-eq'Require'){100}else{80}}
-    if($countryMatch){$score+=if($preferenceMode-eq'Avoid'){-90}elseif($preferenceMode-eq'Require'){100}else{60}}
-    $results+=[pscustomobject]@{Id=$m.id;Name=$m.displayName;Tag=$m.ollamaTag;Tasks=@($m.tasks);Score=$score;Ram=$m.minRamGiB;Vram=$m.minVramGiB;Vendor=$m.organization;Country=$m.country;Context=$m.contextTokens;DownloadGiB=[double]$m.downloadGiB}
+    if($vendorMatch){$vendorBonus=if($preferenceMode-eq'Avoid'){-120}elseif($preferenceMode-eq'Require'){100}else{80};$score+=$vendorBonus}
+    if($countryMatch){$countryBonus=if($preferenceMode-eq'Avoid'){-90}elseif($preferenceMode-eq'Require'){100}else{60};$score+=$countryBonus}
+    $item=[pscustomobject]@{Id=$m.id;Name=$m.displayName;Tag=$m.ollamaTag;Tasks=@($m.tasks);Score=$score;Ram=$m.minRamGiB;Vram=$m.minVramGiB;Vendor=$m.organization;Country=$m.country;Context=$m.contextTokens;DownloadGiB=[double]$m.downloadGiB;Reason=if(-not$hardwareFit){'Exceeds available RAM or VRAM'}elseif(-not$filterFit){'Filtered by use case or provenance preference'}else{'Supported'};Supported=$hardwareFit}
+    if(-not$hardwareFit){$unsupported+=$item}elseif(-not$filterFit){$supported+=$item}else{$results+=$item}
   }
-  [pscustomobject]@{Models=@($results|Sort-Object @{Expression='Score';Descending=$true},@{Expression='Vram';Descending=$true},@{Expression='Tag';Descending=$false});RamBudget=[math]::Round($ramBudget,1);VramBudget=[math]::Round($vramBudget,1);UseCase=$useCase}
+  [pscustomobject]@{Models=@($results|Sort-Object @{Expression='Score';Descending=$true},@{Expression='Vram';Descending=$true},@{Expression='Tag';Descending=$false});SupportedModels=@($supported|Sort-Object displayName);UnsupportedModels=@($unsupported|Sort-Object displayName);RamBudget=[math]::Round($ramBudget,1);VramBudget=[math]::Round($vramBudget,1);UseCase=$useCase}
 }
 
 $form=New-Object Windows.Forms.Form
@@ -118,28 +118,18 @@ $installPath=New-Object Windows.Forms.TextBox;$installPath.Text=Join-Path $env:U
 $hardwareText=New-Object Windows.Forms.TextBox;$hardwareText.Multiline=$true;$hardwareText.ReadOnly=$true;$hardwareText.Size=New-Object Drawing.Size(720,260)
 $hardwareConfirm=New-Object Windows.Forms.CheckBox;$hardwareConfirm.Text='I have reviewed and confirm this detected hardware information.';$hardwareConfirm.Width=600
 $useCase=New-Object Windows.Forms.ComboBox;$useCase.DropDownStyle='DropDownList';[void]$useCase.Items.AddRange(@('General Conversation (Chat)','Reasoning','Coding','Deep Research','All'));$useCase.SelectedIndex=0
-$allocation=New-Object Windows.Forms.ComboBox;$allocation.DropDownStyle='DropDownList';[void]$allocation.Items.AddRange(@('Comfortable','Aggressive'));$allocation.SelectedIndex=0
 $prefMode=New-Object Windows.Forms.ComboBox;$prefMode.DropDownStyle='DropDownList';[void]$prefMode.Items.AddRange(@('None','Prefer','Avoid','Require'));$prefMode.SelectedIndex=0
 $vendor=New-Object Windows.Forms.ComboBox;$vendor.DropDownStyle='DropDownList';[void]$vendor.Items.AddRange(@('Any','Alibaba','Cohere','DeepSeek','Google','IBM','Meta','Microsoft','MistralAI','Moonshot','NVIDIA','THUDM'));$vendor.SelectedIndex=0
 $country=New-Object Windows.Forms.ComboBox;$country.DropDownStyle='DropDownList';[void]$country.Items.AddRange(@('Any','Canada','China','France','UnitedStates'));$country.SelectedIndex=0
 $provenanceNote=New-Object Windows.Forms.Label;$provenanceNote.Size=New-Object Drawing.Size(520,35);$provenanceNote.ForeColor=[Drawing.Color]::DimGray
-$recommendGrid=New-Object Windows.Forms.DataGridView
-$recommendGrid.Location=New-Object Drawing.Point(0,28);$recommendGrid.Size=New-Object Drawing.Size(750,310)
-$recommendGrid.AllowUserToAddRows=$false;$recommendGrid.AllowUserToDeleteRows=$false;$recommendGrid.AllowUserToResizeRows=$false
-$recommendGrid.RowHeadersVisible=$false;$recommendGrid.MultiSelect=$false;$recommendGrid.SelectionMode='FullRowSelect'
-$recommendGrid.AutoGenerateColumns=$false;$recommendGrid.EditMode='EditOnEnter'
-$selectColumn=New-Object Windows.Forms.DataGridViewCheckBoxColumn;$selectColumn.Name='Selected';$selectColumn.HeaderText='Install';$selectColumn.Width=48
-$modelColumn=New-Object Windows.Forms.DataGridViewTextBoxColumn;$modelColumn.Name='Model';$modelColumn.HeaderText='Model';$modelColumn.Width=205;$modelColumn.ReadOnly=$true
-$generalColumn=New-Object Windows.Forms.DataGridViewTextBoxColumn;$generalColumn.Name='General';$generalColumn.HeaderText='General chat';$generalColumn.Width=72;$generalColumn.ReadOnly=$true
-$codingColumn=New-Object Windows.Forms.DataGridViewTextBoxColumn;$codingColumn.Name='Coding';$codingColumn.HeaderText='Coding';$codingColumn.Width=55;$codingColumn.ReadOnly=$true
-$reasoningColumn=New-Object Windows.Forms.DataGridViewTextBoxColumn;$reasoningColumn.Name='Reasoning';$reasoningColumn.HeaderText='Reasoning';$reasoningColumn.Width=68;$reasoningColumn.ReadOnly=$true
-$documentsColumn=New-Object Windows.Forms.DataGridViewTextBoxColumn;$documentsColumn.Name='Documents';$documentsColumn.HeaderText='Documents';$documentsColumn.Width=68;$documentsColumn.ReadOnly=$true
-$allColumn=New-Object Windows.Forms.DataGridViewTextBoxColumn;$allColumn.Name='All';$allColumn.HeaderText='All';$allColumn.Width=38;$allColumn.ReadOnly=$true
-$storageColumn=New-Object Windows.Forms.DataGridViewTextBoxColumn;$storageColumn.Name='Storage';$storageColumn.HeaderText='HDD';$storageColumn.Width=62;$storageColumn.ReadOnly=$true
-$scoreColumn=New-Object Windows.Forms.DataGridViewTextBoxColumn;$scoreColumn.Name='Score';$scoreColumn.HeaderText='Score';$scoreColumn.Width=52;$scoreColumn.ReadOnly=$true
-foreach($column in @($selectColumn,$modelColumn,$generalColumn,$codingColumn,$reasoningColumn,$documentsColumn,$allColumn,$storageColumn,$scoreColumn)){
-  [void]$recommendGrid.Columns.Add([Windows.Forms.DataGridViewColumn]$column)
+$recommendGrids=@()
+function New-RecommendGrid([bool]$Selectable){
+  $grid=New-Object Windows.Forms.DataGridView;$grid.AllowUserToAddRows=$false;$grid.AllowUserToDeleteRows=$false;$grid.AllowUserToResizeRows=$false;$grid.RowHeadersVisible=$false;$grid.MultiSelect=$false;$grid.SelectionMode='FullRowSelect';$grid.AutoGenerateColumns=$false;$grid.EditMode='EditOnEnter';$grid.ReadOnly=-not$Selectable;$grid.ScrollBars='Vertical'
+  $cols=@(@('Selected','Install',48),@('Model','Model',205),@('General','General chat',72),@('Coding','Coding',55),@('Reasoning','Reasoning',68),@('Documents','Documents',68),@('All','All',38),@('Storage','HDD',62),@('Score','Score',52))
+  foreach($c in $cols){$col=if($c[0]-eq'Selected'){New-Object Windows.Forms.DataGridViewCheckBoxColumn}else{New-Object Windows.Forms.DataGridViewTextBoxColumn};$col.Name=$c[0];$col.HeaderText=$c[1];$col.Width=$c[2];$col.ReadOnly=$c[0]-ne'Selected';[void]$grid.Columns.Add($col)}
+  return $grid
 }
+$recommendGrid=New-RecommendGrid $true;$supportedGrid=New-RecommendGrid $true;$unsupportedGrid=New-RecommendGrid $false;$recommendGrids=@($recommendGrid,$supportedGrid,$unsupportedGrid)
 $recommendIntro=New-Object Windows.Forms.Label;$recommendIntro.Location=New-Object Drawing.Point(0,0);$recommendIntro.Size=New-Object Drawing.Size(740,24)
 $recommendSummary=New-Object Windows.Forms.Label;$recommendSummary.Location=New-Object Drawing.Point(0,344);$recommendSummary.Size=New-Object Drawing.Size(740,58)
 $progress=New-Object Windows.Forms.TextBox;$progress.Multiline=$true;$progress.ReadOnly=$true;$progress.ScrollBars='Both';$progress.WordWrap=$false;$progress.Size=New-Object Drawing.Size(720,380);$progress.Font=New-Object Drawing.Font('Consolas',9)
@@ -151,7 +141,7 @@ function Add-Row($label,$control,$y){
 }
 function Get-SelectedRecommendations {
   $selected=@()
-  foreach($row in $recommendGrid.Rows){if([bool]$row.Cells['Selected'].Value){$selected+=$row.Tag}}
+  foreach($grid in @($recommendGrid,$supportedGrid)){foreach($row in $grid.Rows){if([bool]$row.Cells['Selected'].Value){$selected+=$row.Tag}}}
   return @($selected)
 }
 function Update-RecommendationSummary {
@@ -160,6 +150,9 @@ function Update-RecommendationSummary {
   $totalStorage=$storage+0.7
   $recommendSummary.Text="$($selected.Count) of 3 models selected. Estimated HDD: $([math]::Round($storage,1)) GiB selected + 0.7 GiB embedding support = $([math]::Round($totalStorage,1)) GiB total.`r`nOnly one conversational model is actively loaded at a time; the other selected models remain stored on disk."
   $next.Enabled=$selected.Count-ge1-and$selected.Count-le3
+}
+function Add-RecommendationRows($grid,$models,[bool]$Selectable){
+  $grid.Rows.Clear();foreach($m in @($models)){$general=if($m.Tasks-contains'GeneralChat'){'Yes'}else{''};$coding=if($m.Tasks-contains'Coding'){'Yes'}else{''};$reasoning=if($m.Tasks-contains'Reasoning'){'Yes'}else{''};$documents=if($m.Tasks-contains'DocumentQa'){'Yes'}else{''};$all=if($general-and$coding-and$reasoning-and$documents){'Yes'}else{''};$row=$grid.Rows.Add($false,"$($m.Name)`r`n$($m.Tag)",$general,$coding,$reasoning,$documents,$all,"$($m.DownloadGiB) GiB",$m.Score);$grid.Rows[$row].Tag=$m;$grid.Rows[$row].Height=34;$grid.Rows[$row].Cells['Model'].ToolTipText="$($m.Reason)`nMinimum RAM: $($m.Ram) GiB`nMinimum VRAM: $($m.Vram) GiB";if(-not$Selectable){$grid.Rows[$row].Cells['Selected'].Value=$false}}
 }
 function Show-Page {
   $content.Controls.Clear();$back.Enabled=$page-gt0;$next.Enabled=$true;$next.Text='Next'
@@ -182,54 +175,28 @@ function Show-Page {
     }
     3{
       $title.Text='Select model preferences'
-      Add-Row 'Primary use case' $useCase 5;Add-Row 'Resource allocation' $allocation 50
-      $script:allocDesc=New-Object Windows.Forms.Label
-      $script:allocDesc.Location=New-Object Drawing.Point(200,78)
-      $script:allocDesc.Size=New-Object Drawing.Size(510,20)
-      $script:allocDesc.ForeColor=[Drawing.Color]::DimGray
-      $script:allocDesc.Font=New-Object Drawing.Font('Segoe UI',8.5)
-      $content.Controls.Add($script:allocDesc)
-      $updateAllocDesc={
-        $script:allocDesc.Text=if($allocation.SelectedItem-eq'Comfortable'){
-          'Reserves ~35% RAM and ~20% VRAM for Windows, Docker, IDEs, and browsers.'
-        }else{
-          'Uses up to ~85% RAM and ~90% VRAM. Leaves less headroom for other apps.'
-        }
-      }
-      &$updateAllocDesc
-      $allocation.add_SelectedIndexChanged($updateAllocDesc)
+      Add-Row 'Primary use case' $useCase 5
       $runtimeLabel=New-Object Windows.Forms.Label;$runtimeLabel.Text='Runtime';$runtimeLabel.Location=New-Object Drawing.Point(5,100);$runtimeLabel.Size=New-Object Drawing.Size(190,24)
       $runtimeValue=New-Object Windows.Forms.Label;$runtimeValue.Text='Ollama (local)';$runtimeValue.Font=New-Object Drawing.Font('Segoe UI',10,[Drawing.FontStyle]::Bold);$runtimeValue.Location=New-Object Drawing.Point(200,100);$runtimeValue.Size=New-Object Drawing.Size(300,24)
       $runtimeHelp=New-Object Windows.Forms.Label;$runtimeHelp.Text='Recommendations are generated for local Ollama models only.';$runtimeHelp.Location=New-Object Drawing.Point(200,124);$runtimeHelp.Size=New-Object Drawing.Size(480,24);$runtimeHelp.ForeColor=[Drawing.Color]::DimGray
       $content.Controls.AddRange(@($runtimeLabel,$runtimeValue,$runtimeHelp))
       Add-Row 'Model provenance mode' $prefMode 160;Add-Row 'Preferred organization' $vendor 205;Add-Row 'Preferred country/region' $country 250
       $provenanceNote.Location=New-Object Drawing.Point(200,280);$content.Controls.Add($provenanceNote)
-      $note=New-Object Windows.Forms.Label;$note.Text='Comfortable preserves capacity for Windows, browsers, IDEs and Docker. Aggressive retains less headroom.';$note.Location=New-Object Drawing.Point(5,330);$note.Size=New-Object Drawing.Size(700,45);$content.Controls.Add($note)
+      $note=New-Object Windows.Forms.Label;$note.Text='The installer allocates approximately 20% of detected RAM and 50% of logical processors to WSL/Docker. GPU model recommendations may use up to 100% of detected dedicated VRAM; Ollama manages runtime GPU utilization.';$note.Location=New-Object Drawing.Point(5,315);$note.Size=New-Object Drawing.Size(700,42);$note.AutoSize=$false;$content.Controls.Add($note)
     }
     4{
       $title.Text='Review model recommendations'
       $useCaseValue=@{'General Conversation (Chat)'='GeneralChat';'Reasoning'='Reasoning';'Coding'='Coding';'Deep Research'='DeepResearch';'All'='All'}[[string]$useCase.SelectedItem]
-      $script:recommendations=Get-Recommendations $script:hardware $useCaseValue ([string]$allocation.SelectedItem) ([string]$prefMode.SelectedItem) ([string]$vendor.SelectedItem) ([string]$country.SelectedItem)
-      $recommendGrid.Rows.Clear()
-      $models=@($script:recommendations.Models|Select-Object -First 12)
-      $recommendIntro.Text="RAM budget: $($script:recommendations.RamBudget) GiB   |   VRAM budget: $($script:recommendations.VramBudget) GiB   |   Select 1 to 3 models to install."
-      $index=0
-      foreach($m in $models){
-        $general=if($m.Tasks-contains'GeneralChat'){'Yes'}else{''};$coding=if($m.Tasks-contains'Coding'){'Yes'}else{''}
-        $reasoning=if($m.Tasks-contains'Reasoning'){'Yes'}else{''};$documents=if($m.Tasks-contains'DocumentQa'){'Yes'}else{''}
-        $all=if($general-and$coding-and$reasoning-and$documents){'Yes'}else{''}
-        $rowIndex=$recommendGrid.Rows.Add(($index-lt3),"$($m.Name)`r`n$($m.Tag)",$general,$coding,$reasoning,$documents,$all,"$($m.DownloadGiB) GiB",$m.Score)
-        $recommendGrid.Rows[$rowIndex].Tag=$m;$recommendGrid.Rows[$rowIndex].Height=38
-        $recommendGrid.Rows[$rowIndex].Cells['Model'].ToolTipText="Ollama tag: $($m.Tag)`nOrganization: $($m.Vendor)`nCountry: $($m.Country)`nMinimum RAM: $($m.Ram) GiB`nMinimum VRAM: $($m.Vram) GiB"
-        $index++
-      }
-      if($models.Count-eq0){$recommendIntro.Text=if($prefMode.SelectedItem-eq'Require'){'No compatible Ollama model matched the required provenance filter.'}else{'No recommended model configurations found.'}}
-      $content.Controls.AddRange(@($recommendIntro,$recommendGrid,$recommendSummary));$next.Text='Install';Update-RecommendationSummary
+      $script:recommendations=Get-Recommendations $script:hardware $useCaseValue ([string]$prefMode.SelectedItem) ([string]$vendor.SelectedItem) ([string]$country.SelectedItem)
+      $recommendIntro.Text="RAM budget: $($script:recommendations.RamBudget) GiB   |   VRAM budget: $($script:recommendations.VramBudget) GiB   |   Select 1 to 3 models from the first two categories."
+      $groups=@(@('Recommended models',$recommendGrid,$script:recommendations.Models,$true),@('Supported but not recommended / filtered out',$supportedGrid,$script:recommendations.SupportedModels,$true),@('Unsupported models',$unsupportedGrid,$script:recommendations.UnsupportedModels,$false));$y=28
+      foreach($g in $groups){$count=@($g[2]).Count;$cue=if($count-gt2){' — scroll to view all'}else{''};$label=New-Object Windows.Forms.Label;$label.Text="$($g[0]) ($count)$cue";$label.Location=New-Object Drawing.Point -ArgumentList 0,$y;$label.Size=New-Object Drawing.Size -ArgumentList 740,20;$grid=$g[1];$grid.Location=New-Object Drawing.Point -ArgumentList 0,($y+20);$grid.Size=New-Object Drawing.Size -ArgumentList 750,95;Add-RecommendationRows $grid $g[2] $g[3];$content.Controls.AddRange(@($label,$grid));$y+=122}
+      $recommendSummary.Location=New-Object Drawing.Point(0,398);$content.Controls.AddRange(@($recommendIntro,$recommendSummary));$next.Text='Install';Update-RecommendationSummary
     }
     5{$title.Text='Installing DSAlgo Local AI Setup';$content.Controls.Add($progress);$back.Enabled=$false;$next.Enabled=$false}
     6{$title.Text='Installation complete';$done=New-Object Windows.Forms.Label;$done.Text='The setup was installed successfully and is currently stopped. Use Start from the Desktop or Start Menu.';$done.Location=New-Object Drawing.Point(10,30);$done.Size=New-Object Drawing.Size(700,80);$content.Controls.Add($done);$back.Enabled=$false;$next.Text='Finish'}
   }
-  $form.TopMost=$true;$form.BringToFront();$form.Activate()
+  $form.BringToFront();$form.Activate()
 }
 function Append-Progress([string]$text){
   if([string]::IsNullOrEmpty($text)){return}
@@ -267,8 +234,9 @@ function Start-Installation {
   $general=@($chosen|Where-Object{$_.Tasks-contains'GeneralChat'}|Select-Object -First 1);if(-not$general){$general=@($chosen|Select-Object -First 1)}
   $coder=@($chosen|Where-Object{$_.Tasks-contains'Coding'}|Select-Object -First 1);if(-not$coder){$coder=$general}
   $reasoning=@($chosen|Where-Object{$_.Tasks-contains'Reasoning'}|Select-Object -First 1);if(-not$reasoning){$reasoning=$general}
-  $resourceProfile=Get-ResourceProfile $script:hardware ([string]$allocation.SelectedItem)
-  $modelConfig=[ordered]@{schemaVersion=1;hardwareProfile=[ordered]@{gpu=$script:hardware.Gpu;vramMB=([int]$script:hardware.VramGiB*1024);systemRamGB=$script:hardware.RamGiB;reservedSystemRamGB=if($allocation.SelectedItem-eq'Comfortable'){[math]::Floor($script:hardware.RamGiB*.35)}else{[math]::Floor($script:hardware.RamGiB*.15)};notes='Generated deterministically by install.exe.'};models=[ordered]@{
+  $resourceProfile=Get-ResourceProfile $script:hardware
+  $reservedRam=[math]::Floor($script:hardware.RamGiB*.2)
+  $modelConfig=[ordered]@{schemaVersion=1;hardwareProfile=[ordered]@{gpu=$script:hardware.Gpu;vramMB=([int]$script:hardware.VramGiB*1024);systemRamGB=$script:hardware.RamGiB;reservedSystemRamGB=$reservedRam;notes='Generated deterministically by install.exe.'};models=[ordered]@{
     general=[ordered]@{ollamaTag=$general[0].Tag;displayName=$general[0].Name;role='general/tool agent';numCtx=[math]::Min(16384,[int]$general[0].Context);temperature=.55;keepAlive='5m';toolCalling=$true}
     coder=[ordered]@{ollamaTag=$coder[0].Tag;displayName=$coder[0].Name;role='coding/tool agent';numCtx=[math]::Min(16384,[int]$coder[0].Context);temperature=.2;keepAlive='10m';toolCalling=$true}
     reasoning=[ordered]@{ollamaTag=$reasoning[0].Tag;displayName=$reasoning[0].Name;role='reasoning/research agent';numCtx=[math]::Min(16384,[int]$reasoning[0].Context);temperature=.35;keepAlive='3m';toolCalling=$false}
@@ -329,26 +297,25 @@ $prefMode.Add_SelectedIndexChanged({
 })
 $vendor.Add_SelectedIndexChanged({if($prefMode.SelectedItem-ne'None'){$provenanceNote.Text=if($vendor.SelectedItem-eq'Any'-and$country.SelectedItem-eq'Any'){'Choose an organization or country for this preference to affect ranking.'}else{''}}})
 $country.Add_SelectedIndexChanged({if($prefMode.SelectedItem-ne'None'){$provenanceNote.Text=if($vendor.SelectedItem-eq'Any'-and$country.SelectedItem-eq'Any'){'Choose an organization or country for this preference to affect ranking.'}else{''}}})
-$recommendGrid.Add_CellBeginEdit({
+$selectableGrids=@($recommendGrid,$supportedGrid)
+foreach($selectionGrid in $selectableGrids){$selectionGrid.Add_CellBeginEdit({
   param($sender,$eventArgs)
-  if($eventArgs.RowIndex-lt0-or$eventArgs.ColumnIndex-ne$recommendGrid.Columns['Selected'].Index){return}
-  $current=[bool]$recommendGrid.Rows[$eventArgs.RowIndex].Cells['Selected'].Value
+  if($eventArgs.RowIndex-lt0-or$eventArgs.ColumnIndex-ne$sender.Columns['Selected'].Index){return}
+  $current=[bool]$sender.Rows[$eventArgs.RowIndex].Cells['Selected'].Value
   if(-not$current-and@(Get-SelectedRecommendations).Count-ge3){
     $eventArgs.Cancel=$true
     [Windows.Forms.MessageBox]::Show($form,'You can install at most three conversational models.','Selection limit')|Out-Null
   }
-})
-$recommendGrid.Add_CurrentCellDirtyStateChanged({if($recommendGrid.IsCurrentCellDirty){$recommendGrid.CommitEdit([Windows.Forms.DataGridViewDataErrorContexts]::Commit)|Out-Null}})
-$recommendGrid.Add_CellValueChanged({
+});$selectionGrid.Add_CurrentCellDirtyStateChanged({param($sender,$eventArgs) if($sender.IsCurrentCellDirty){$sender.CommitEdit([Windows.Forms.DataGridViewDataErrorContexts]::Commit)|Out-Null}});$selectionGrid.Add_CellValueChanged({
   param($sender,$eventArgs)
-  if($eventArgs.RowIndex-lt0-or$eventArgs.ColumnIndex-ne$recommendGrid.Columns['Selected'].Index){return}
+  if($eventArgs.RowIndex-lt0-or$eventArgs.ColumnIndex-ne$sender.Columns['Selected'].Index){return}
   $selected=@(Get-SelectedRecommendations)
   if($selected.Count-gt3){
-    $recommendGrid.Rows[$eventArgs.RowIndex].Cells['Selected'].Value=$false
-    $recommendGrid.InvalidateRow($eventArgs.RowIndex)
+    $sender.Rows[$eventArgs.RowIndex].Cells['Selected'].Value=$false
+    $sender.InvalidateRow($eventArgs.RowIndex)
   }
   Update-RecommendationSummary
-})
+})}
 $form.Add_FormClosing({
   param($sender,$eventArgs)
   if(-not$script:allowWizardClose-and$script:child-and-not$script:child.HasExited){
@@ -357,11 +324,7 @@ $form.Add_FormClosing({
     [Windows.Forms.MessageBox]::Show($form,'Installation is still running. Use Cancel and confirm cancellation if you want to stop it.','DSAlgo Local AI Setup')|Out-Null
   }
 })
-$foregroundTimer=New-Object Windows.Forms.Timer;$foregroundTimer.Interval=1500
-$foregroundTimer.Add_Tick({
-  if($form.Visible-and$script:child-and-not$script:child.HasExited){$form.TopMost=$true;$form.BringToFront();$form.Activate()}
-})
-$foregroundTimer.Start()
+$form.Add_Shown({$form.BringToFront();$form.Activate();$form.TopMost=$false})
 $installMonitor=New-Object Windows.Forms.Timer;$installMonitor.Interval=500
 $installMonitor.Add_Tick({
   try{
@@ -372,7 +335,6 @@ $installMonitor.Add_Tick({
     $installMonitor.Stop()
     Read-NewInstallerOutput $script:installerOutputLog 'output'
     Read-NewInstallerOutput $script:installerErrorLog 'error'
-    $foregroundTimer.Stop()
     $script:installerExitCode=$script:child.ExitCode
     $hasExitCode=-not[string]::IsNullOrWhiteSpace([string]$script:installerExitCode)
     # PS2EXE can expose no exit code even after the child writes its terminal
@@ -394,7 +356,7 @@ $installMonitor.Add_Tick({
   }
 })
 $vendor.Enabled=$false;$country.Enabled=$false;$provenanceNote.Text='Choose Prefer, Avoid, or Require to enable provenance filters.'
-$cancel.Add_Click({if($script:child-and-not$script:child.HasExited){$answer=[Windows.Forms.MessageBox]::Show($form,'Cancel the running installation?','Confirm',[Windows.Forms.MessageBoxButtons]::YesNo);if($answer-ne[Windows.Forms.DialogResult]::Yes){return};try{$script:child.Kill()}catch{}};$script:allowWizardClose=$true;$foregroundTimer.Stop();$installMonitor.Stop();$form.Close()})
+$cancel.Add_Click({if($script:child-and-not$script:child.HasExited){$answer=[Windows.Forms.MessageBox]::Show($form,'Cancel the running installation?','Confirm',[Windows.Forms.MessageBoxButtons]::YesNo);if($answer-ne[Windows.Forms.DialogResult]::Yes){return};try{$script:child.Kill()}catch{}};$script:allowWizardClose=$true;$installMonitor.Stop();$form.Close()})
 
 Show-Page
 [void]$form.ShowDialog()
