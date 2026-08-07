@@ -2,6 +2,55 @@
 
 ## Unreleased
 
+- Removed the Comfortable/Aggressive installer choice. WSL/Docker resource
+  recommendations now consistently target approximately 50% of detected RAM
+  and logical processors. GPU model recommendations use the full detected
+  dedicated VRAM; Ollama controls actual GPU utilization at runtime.
+
+- Fixed installer configuration preparation failing when conditional values
+  were evaluated inline as commands in PowerShell.
+- Fixed model-preference wizard layout so the fixed-allocation explanation no
+  longer overlaps provenance controls.
+- Pinned the protected release workflow to Node.js 24, added explicit Svelte
+  configs for both frontend apps, and filtered the known legacy form-dialog
+  accessibility diagnostic.
+- Expanded the installer model review into recommended, supported-but-filtered,
+  and unsupported catalog categories. Only the first two categories are
+  selectable, with a three-model maximum.
+- Fixed Windows PowerShell point/size construction in the categorized model
+  review page.
+- Reduced the default WSL/Docker RAM allocation to approximately 20%, leaving
+  approximately 80% for Windows and native Ollama model recommendations.
+- Made installer confirmation and warning dialogs owned by topmost windows so
+  they appear in front of the main installer.
+- Audited lifecycle executables and made the installation folder picker owned
+  by its topmost wizard as well.
+- Strengthened the WSL confirmation owner window so the warning remains in
+  the foreground while the user makes a choice.
+- Replaced the child-process WSL message box with a dedicated topmost
+  Overwrite/Exit dialog to prevent focus being reclaimed by the parent wizard.
+- Hardened the WSL prompt initialization and fallback so setup cannot wait on
+  an invisible decision dialog.
+- Prevented the fallback prompt from appearing after the user intentionally
+  chooses Exit in the primary WSL dialog.
+- Fixed WSL overwrite persistence so existing keys are replaced once without
+  duplicate entries and are written even when the file length is unchanged.
+- Treats winget's explicit "No available upgrade" Docker result as expected
+  instead of displaying a warning.
+- Changed installer windows to be topmost only during initial launch; users
+  can now move the parent wizard behind child prompts and other applications.
+- Fixed categorized model selection counts across multiple grids and added
+  explicit scroll cues when a category contains more rows than visible.
+
+- WSL setup now silently preserves existing memory/processor/swap values that
+  meet or exceed the generated hardware-safe recommendation; lower values can
+  be explicitly overwritten after the existing file is backed up, or setup
+  can exit without changes.
+- Release installation checks for Docker Desktop updates and waits longer for
+  Docker Engine readiness before using Compose.
+
+## Unreleased
+
 - Fixed the installer license lookup for extracted release bundles by locating
   the canonical `LICENSE` file inside the adjacent `payload` directory.
 

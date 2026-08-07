@@ -1,8 +1,8 @@
-param([ValidateSet('Core')][string]$Profile='Core')
+param([ValidateSet('Core')][string]$Profile='Core',[string]$BackupPath='')
 
 . "$PSScriptRoot\scripts\Common.ps1"
 
-function Confirm-WSLMergeIssue([string[]]$Issues,[string]$Path) {
+function Confirm-WSLOverwrite([string[]]$Issues,[string]$Path,[string]$Backup) {
   $details=$Issues -join "`r`n"
   $message=@"
 DSAlgo Local AI Setup preserved the existing settings in:
@@ -11,24 +11,30 @@ $Path
 Merge issues:
 $details
 
-No existing setting will be overwritten. Review the file and ensure its WSL2
-memory, processors, and swap values leave enough capacity for Windows, Docker,
-and native Ollama.
+The existing memory or processor values are lower than the installer recommendation.
 
-Choose Yes to continue setup using the preserved settings. Choose No to abort
-so you can correct .wslconfig and rerun the installer.
+Choose Overwrite to replace only the lower values with the hardware-safe recommendation.
+Choose Exit to leave this file unchanged and stop setup.
+
+Backup: $Backup
 "@
   try {
     Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
-    $choice=[Windows.Forms.MessageBox]::Show($message,'DSAlgo Local AI Setup - WSL configuration',[Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Warning)
-    if ($choice -ne [Windows.Forms.DialogResult]::Yes) { throw "WSL configuration merge was aborted. Remediation: review $Path, resolve the listed settings, then rerun the installer." }
+    $dialog=New-Object Windows.Forms.Form;$dialog.Text='DSAlgo Local AI Setup - WSL configuration';$dialog.TopMost=$true;$dialog.ShowInTaskbar=$true;$dialog.StartPosition='CenterScreen';$dialog.FormBorderStyle='FixedDialog';$dialog.ControlBox=$false;$dialog.MinimizeBox=$false;$dialog.MaximizeBox=$false;$dialog.ClientSize=New-Object Drawing.Size -ArgumentList 520,330
+    $text=New-Object Windows.Forms.Label;$text.Text=$message;$text.Location=New-Object Drawing.Point -ArgumentList 18,18;$text.Size=New-Object Drawing.Size -ArgumentList 480,245;$text.AutoSize=$false
+    $yes=New-Object Windows.Forms.Button;$yes.Text='Overwrite';$yes.DialogResult=[Windows.Forms.DialogResult]::Yes;$yes.Location=New-Object Drawing.Point -ArgumentList 315,280;$yes.Size=New-Object Drawing.Size -ArgumentList 90,30
+    $no=New-Object Windows.Forms.Button;$no.Text='Exit';$no.DialogResult=[Windows.Forms.DialogResult]::No;$no.Location=New-Object Drawing.Point -ArgumentList 415,280;$no.Size=New-Object Drawing.Size -ArgumentList 90,30
+    $dialog.Controls.AddRange(@($text,$yes,$no));$dialog.AcceptButton=$yes;$dialog.CancelButton=$no;$dialog.Add_Shown({$dialog.WindowState=[Windows.Forms.FormWindowState]::Normal;$dialog.TopMost=$true;$dialog.Activate();$dialog.BringToFront()})
+    $choice=$dialog.ShowDialog();$dialog.Dispose()
+    if ($choice -ne [Windows.Forms.DialogResult]::Yes) { throw 'WSL configuration was not changed. Setup exited at the user request.' }
   } catch {
-    if ($_.Exception.Message -match '^WSL configuration merge was aborted') { throw }
-    Write-Warning $message
-    $choice=Read-Host 'Continue setup with preserved .wslconfig settings? Type YES to continue'
-    if ($choice -ne 'YES') { throw "WSL configuration merge was aborted. Remediation: review $Path, resolve the listed settings, then rerun the installer." }
+    if ($_.Exception.Message -match '^WSL configuration (?:was not changed|merge was aborted)') { throw }
+    try {
+      $choice=[Windows.Forms.MessageBox]::Show($message,'DSAlgo Local AI Setup - WSL configuration',[Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Warning)
+      if ($choice -ne [Windows.Forms.DialogResult]::Yes) { throw 'WSL configuration was not changed. Setup exited at the user request.' }
+    } catch { throw "WSL configuration prompt could not be displayed: $($_.Exception.Message)" }
   }
-  Write-Warning 'Continuing with preserved existing .wslconfig values. DSAlgo resource recommendations may not be applied.'
+  return $true
 }
 
 $registry=Get-Registry
@@ -81,12 +87,21 @@ for($index=0;$index-lt$lines.Count;$index++){
   if(-not[string]::IsNullOrWhiteSpace($section)){$sectionLastLine[$section]=$index}
 }
 
-foreach($key in $desired.Keys){
-  if($entries.ContainsKey($key)-and$entries[$key].Value-ne$desired[$key]){
-    $issues+="[$($key-replace'\.','] ')] is '$($entries[$key].Value)' (DSAlgo recommends '$($desired[$key])')."
+function Get-SettingNumber([string]$Key,[string]$Value) {
+  if($Key -in @('wsl2.memory','wsl2.swap')) { $m=[regex]::Match($Value,'^\s*(\d+(?:\.\d+)?)\s*(?:GB|GiB)?\s*$','IgnoreCase'); if($m.Success){return [double]$m.Groups[1].Value} }
+  if($Key -eq 'wsl2.processors' -and $Value -match '^\s*\d+\s*$'){return [double]$Value.Trim()}
+  return $null
+}
+$lower=@()
+foreach($key in @('wsl2.memory','wsl2.processors','wsl2.swap')){
+  if($entries.ContainsKey($key)){
+    $actual=Get-SettingNumber $key $entries[$key].Value; $wanted=Get-SettingNumber $key $desired[$key]
+    if($null -eq $actual -or $actual -lt $wanted){$lower+="[$($key-replace'\.','] ')] is '$($entries[$key].Value)' (installer recommends '$($desired[$key])')."}
   }
 }
-if ($issues.Count) { Confirm-WSLMergeIssue $issues $path }
+if($issues.Count){ throw "Cannot safely merge $path. $($issues -join ' ')" }
+$overwrite=$false
+if($lower.Count){$overwrite=Confirm-WSLOverwrite $lower $path $BackupPath}
 
 $missingBySection=@{}
 foreach($key in $desired.Keys){
@@ -107,12 +122,15 @@ foreach($targetSection in $missingBySection.Keys){
   }
 }
 $newLines=[System.Collections.Generic.List[string]]::new()
+$changed=$false
 for($index=0;$index-lt$lines.Count;$index++){
-  $newLines.Add($lines[$index])
+  $line=$lines[$index]
+  foreach($key in @('wsl2.memory','wsl2.processors','wsl2.swap')){if($overwrite -and $entries.ContainsKey($key) -and $entries[$key].Line -eq $index){$replacement="$($key.Split('.')[1])=$($desired[$key])";if($line -ne $replacement){$changed=$true};$line=$replacement}}
+  $newLines.Add($line)
   if($inserts.ContainsKey($index)){foreach($entry in $inserts[$index]){$newLines.Add($entry)}}
 }
 foreach($entry in $newSections){$newLines.Add($entry)}
-if ($newLines.Count -ne $lines.Count) {
+if ($newLines.Count -ne $lines.Count -or $changed) {
   Set-Content -LiteralPath $path -Value $newLines -Encoding ASCII
   Write-Host "Merged missing DSAlgo settings into $path without replacing existing values. Run 'wsl --shutdown' before restarting Docker Desktop."
 } else {

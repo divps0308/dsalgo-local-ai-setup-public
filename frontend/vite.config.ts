@@ -8,7 +8,14 @@ const outDir = resolve(import.meta.dirname, "..", target === "studio" ? "agent-s
 
 export default defineConfig({
   root,
-  plugins: [svelte()],
+  plugins: [svelte({
+    // Dialog semantics are provided by the overlay container around these
+    // forms; suppress the compiler's legacy form-role diagnostic.
+    onwarn: (warning, handler) => {
+      if (warning.code === "a11y_no_noninteractive_element_to_interactive_role") return;
+      handler(warning);
+    }
+  })],
   build: {
     outDir,
     emptyOutDir: true,

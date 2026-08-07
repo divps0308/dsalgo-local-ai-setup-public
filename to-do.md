@@ -83,7 +83,7 @@
   model. Only one conversational model is intended to be resident at a time;
   switching roles can cause model swaps, latency, and memory pressure.
 - Docker/WSL resource sizing is now generated from detected RAM and logical
-  processors plus the Comfortable/Aggressive choice; low-memory and mixed
+  processors plus the fixed 50% allocation; low-memory and mixed
   existing-`.wslconfig` validation remains outstanding.
 - The full installer journey, restart/resume behavior, prerequisite fallback,
   GPU placement, model downloads, and lifecycle shortcuts have not yet been
@@ -563,3 +563,24 @@ resolution in `CHANGELOG.md` and any resulting decision in `decision-log.md`.
   Record model-specific incompatibilities rather than treating downloadability
   as Goal-mode support.
 
+- Installation: validate the fixed 50% WSL profile, overwrite/exit flow, full-VRAM model filtering, and Docker update/readiness behavior on low-spec machines with existing `.wslconfig` files.
+- Installation: run the packaged installer smoke test after each release to catch Windows PowerShell syntax differences.
+- Installation: validate the fixed 50% WSL/Docker allocation on low-memory, CPU-only, and mixed-GPU machines.
+- Frontend: replace legacy form-based dialog markup with native dialog
+  semantics instead of relying on the targeted compiler warning filter.
+- Installer: validate three-category model classification and selection limits
+  across CPU-only, low-VRAM, and high-VRAM hardware profiles.
+- Installer: validate the 20% WSL memory profile with the full Docker Compose
+  stack on low-memory machines.
+- Installer: smoke-test foreground dialog behavior for WSL warnings and other
+  prerequisite confirmations on Windows 10/11.
+- Lifecycle: smoke-test the folder picker and all Start/Stop/Repair/Remove/
+  Uninstall wizard prompts while other windows are focused.
+- Installer: smoke-test checkbox counts and scroll cues with selections split
+  across recommended and supported categories.
+- Installer: smoke-test moving the parent wizard behind the WSL decision form
+  and other applications after initial launch.
+- Installer: validate Docker update checks across winget versions with and
+  without an available upgrade.
+- Installer: rebuild and smoke-test the categorized review page on Windows
+  PowerShell 5.1 after packaging.

@@ -53,10 +53,20 @@ function Install-WingetPackage([string]$Command,[string]$Id,[string]$OwnershipPr
   Save-InstallState $state
 }
 function Start-DockerDesktop {
-  if(Get-Process -Name 'Docker Desktop' -ErrorAction SilentlyContinue){return}
   $path=Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
   if(-not(Test-Path -LiteralPath $path)){throw "Docker Desktop executable not found at $path"}
-  Start-Process -FilePath $path -WindowStyle Hidden
+  if(-not(Get-Process -Name 'Docker Desktop' -ErrorAction SilentlyContinue)){Start-Process -FilePath $path -WindowStyle Hidden}
+}
+function Update-DockerDesktop {
+  $winget=Get-Command winget.exe -ErrorAction SilentlyContinue
+  if(-not $winget){Write-Warning 'winget is unavailable; Docker Desktop was not checked for updates.';return}
+  Write-Host 'Checking Docker Desktop for updates...'
+  $out=Join-Path $env:TEMP 'dsalgo-winget-docker-upgrade.out.log';$err=Join-Path $env:TEMP 'dsalgo-winget-docker-upgrade.err.log'
+  $p=Start-Process -FilePath $winget.Source -ArgumentList 'upgrade --id Docker.DockerDesktop --exact --accept-source-agreements --accept-package-agreements --disable-interactivity' -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err
+  if($p.ExitCode -ne 0){
+    $details=((Get-Content -LiteralPath $out -Raw -ErrorAction SilentlyContinue),(Get-Content -LiteralPath $err -Raw -ErrorAction SilentlyContinue))-join "`n"
+    if($details -notmatch 'No available upgrade|No newer package versions are available'){Write-Warning "Docker Desktop update check did not complete successfully (exit $($p.ExitCode)). See $out and $err."}
+  }
 }
 function Wait-Ollama([int]$Seconds=60) {
   $end=(Get-Date).AddSeconds($Seconds)
@@ -120,7 +130,7 @@ if(-not$SkipWSLConfig){
       Save-InstallState $state
     }
   }
-  & "$PSScriptRoot\Configure-WSL.ps1" -Profile Core
+  & "$PSScriptRoot\Configure-WSL.ps1" -Profile Core -BackupPath $state.wslConfigBackup
   Write-Host 'Updating the WSL kernel and client'
   & wsl.exe --update --web-download
   if($LASTEXITCODE-ne 0){throw 'WSL update failed. Run "wsl.exe --update --web-download" as Administrator, then rerun Install.exe.'}
@@ -130,8 +140,9 @@ if(-not$SkipWSLConfig){
 Complete-InstallStep $state 'wsl-config'
 
 Write-InstallPhase 'docker-and-models'
+Update-DockerDesktop
 Start-DockerDesktop
-Wait-Docker
+Wait-Docker -Seconds 600
 if($UsePersonalConfig){Use-PersonalConfiguration}
 Assert-GenericConfiguration
 Ensure-Env
