@@ -94,7 +94,8 @@ multi-GPU, and non-Windows paths remain controlled beta and require manual
 validation. Model thresholds are conservative estimates rather than
 performance guarantees.
 
-The installer performs deterministic hardware detection and catalog scoring; it
+The installer fetches the current catalog from the DSAlgo catalog service, then
+performs deterministic hardware detection and catalog scoring; it
 does not use AI inference. Repeatable output is not a guarantee that drivers,
 backend support, disk capacity, model availability, or throughput will match
 the estimate. Free disk is displayed but is not yet a hard eligibility gate;

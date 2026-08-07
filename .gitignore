@@ -10,6 +10,7 @@
 config/secrets.dpapi.json
 config/oauth-tokens.dpapi.json
 config/personal-*
+config/model-catalog.json
 
 # Generated logs and dependencies
 /logs/*

@@ -12,7 +12,7 @@ agents should also load
 ## Current release caveats
 
 The public installer uses deterministic, inference-free scoring over the
-versioned Ollama catalog. `config/models.json` in an installed copy is
+remote Ollama catalog fetched during installation. `config/models.json` in an installed copy is
 generated from the one-to-three models selected in the wizard; the repository
 template is not a universal hardware guarantee. Docker Compose remains a
 static core service topology because Ollama runs natively on Windows.
@@ -732,6 +732,7 @@ This prevents privileged inheritance by native high-trust services.
 | Open WebUI | Docker volume | Yes |
 | Agent/MCP config | `config/agents.json` | Yes |
 | Model registry | `config/models.json` | Yes |
+| Recommendation catalog | Remote catalog service | Fetched at install time |
 | Project registry | `config/projects.json` | Yes |
 | Operating mode | `config/runtime-policy.json` | Yes |
 | Agent workspace | `workspace/` | Yes |
@@ -780,7 +781,8 @@ produced completion prose without executable verification.`
 
 ### Adding a model role
 
-1. Update `config/models.json`.
+1. Update the remote recommendation catalog service; the installer fetches it
+   at install time and does not bundle a catalog file.
 2. Update model-role validation and selection only where it is structurally
    required.
 3. Verify Install, Benchmark, Health, gateway, Studio, and Workbench load the

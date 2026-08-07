@@ -37,6 +37,17 @@
   duplicate entries and are written even when the file length is unchanged.
 - Treats winget's explicit "No available upgrade" Docker result as expected
   instead of displaying a warning.
+- Updated the Qwen3 entry from the unavailable `qwen3:0.5b` tag to the
+  available `qwen3:0.6b` tag.
+- Revalidated the remaining catalog tags against Ollama's official pages:
+  - Updated Kimi-VL to the available community namespace
+    `richardyoung/kimi-vl-a3b-thinking:latest` and corrected its size metadata.
+  - Replaced the unavailable `gpt-oss:8b` entry with the available
+    `gpt-oss:20b` model and updated its metadata.
+- Removed the bundled model catalog. Install-time recommendations now fetch the
+  current schema-version-2 catalog from the DSAlgo catalog service over HTTPS,
+  so catalog updates do not require a new installer release. Requests allow a
+  300-second timeout and retry up to three times.
 - Changed installer windows to be topmost only during initial launch; users
   can now move the parent wizard behind child prompts and other applications.
 - Fixed categorized model selection counts across multiple grids and added

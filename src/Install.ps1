@@ -24,18 +24,20 @@ Add-Type -AssemblyName System.Drawing
 
 function Get-DeterministicModelRecommendations {
     param([ValidateSet('General','Coding','Research')][string]$UseCase='General')
-    $catalogRoot = $PSScriptRoot
-    if ([string]::IsNullOrWhiteSpace($catalogRoot)) { $catalogRoot = (Get-Location).Path }
-    $catalogPath = Join-Path $catalogRoot 'config\model-catalog.json'
+    $catalogUrl = 'https://dsalgo-model-catalog.vercel.app/dsalgo/v1/get-catalog'
+    $catalog = $null
     $ramGiB=0; try{$os=Get-CimInstance Win32_OperatingSystem -ErrorAction Stop;$ramGiB=[math]::Round($os.TotalVisibleMemorySize/1MB)}catch{}
     $vramGiB=0;$gpuName='CPU only';try{$smi=Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue;if($smi){$line=(& $smi.Source '--query-gpu=name,memory.total' '--format=csv,noheader,nounits' 2>$null|Select-Object -First 1);if($line -match '^\s*(.+?),\s*(\d+)\s*$'){$gpuName=$matches[1].Trim();$vramGiB=[math]::Round([double]$matches[2]/1024)}};if($gpuName -eq 'CPU only'){$gpu=Get-CimInstance Win32_VideoController|Where-Object{$_.Name -match 'NVIDIA|AMD|Radeon|Intel' -and $_.Name -notmatch 'Virtual|Remote|Basic Display'}|Sort-Object @{Expression={if($_.Name -match 'NVIDIA'){0}else{1}}}|Select-Object -First 1;if($gpu){$gpuName=[string]$gpu.Name;if($gpu.AdapterRAM){$vramGiB=[math]::Round([double]$gpu.AdapterRAM/1GB)}}}}catch{}
-    if (Test-Path -LiteralPath $catalogPath) { $catalog=Get-Content -LiteralPath $catalogPath -Raw|ConvertFrom-Json } else {
-        $catalog=[pscustomobject]@{models=@(
-            [pscustomobject]@{id='qwen2.5-coder-7b';displayName='Qwen 2.5 Coder 7B';tasks=@('Coding','General');minRamGiB=16;minVramGiB=6;ollamaTag='qwen2.5-coder:7b'},
-            [pscustomobject]@{id='llama3.1-8b';displayName='Llama 3.1 8B';tasks=@('General','Research');minRamGiB=16;minVramGiB=6;ollamaTag='llama3.1:8b'},
-            [pscustomobject]@{id='deepseek-r1-14b';displayName='DeepSeek R1 14B';tasks=@('Research');minRamGiB=24;minVramGiB=10;ollamaTag='deepseek-r1:14b'}
-        )}
+    $lastError=$null
+    for($attempt=1;$attempt -le 3;$attempt++) {
+        try {
+            $response=Invoke-WebRequest -Uri $catalogUrl -Method Get -Headers @{Accept='application/json'} -UseBasicParsing -TimeoutSec 300 -ErrorAction Stop
+            $catalog=$response.Content|ConvertFrom-Json
+            if($catalog.schemaVersion -ne 2 -or @($catalog.models).Count -eq 0){throw 'The catalog response has an unsupported schema or no models.'}
+            break
+        } catch { $lastError=$_.Exception.Message; if($attempt -lt 3){Start-Sleep -Seconds 2} }
     }
+    if($null -eq $catalog){throw "Unable to download the model catalog from $catalogUrl after 3 attempts. Check your internet connection and try again. $lastError"}
     $models=@($catalog.models)|Where-Object{$_.tasks -contains $UseCase -and $_.minRamGiB -le $ramGiB -and $_.minVramGiB -le $vramGiB}
     if(@($models).Count -eq 0){$models=@($catalog.models)|Where-Object{$_.minRamGiB -le $ramGiB -and $_.minVramGiB -le $vramGiB}}
     $recommendations=@($models|Sort-Object minVramGiB,id|ForEach-Object{[ordered]@{id=$_.id;displayName=$_.displayName;ollamaTag=$_.ollamaTag}})

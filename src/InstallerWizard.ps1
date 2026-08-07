@@ -62,11 +62,20 @@ function Get-ResourceProfile($hardware){
 }
 
 function Get-Catalog {
-  $root=$PSScriptRoot
-  if([string]::IsNullOrWhiteSpace($root)){try{$root=Split-Path -Parent (Get-Process -Id $PID).MainModule.FileName}catch{$root=(Get-Location).Path}}
-  $paths=@((Join-Path $root 'payload\config\model-catalog.json'),(Join-Path $root 'config\model-catalog.json'),(Join-Path (Split-Path -Parent $root) 'config\model-catalog.json'))
-  foreach($path in $paths){if(Test-Path -LiteralPath $path){return Get-Content -LiteralPath $path -Raw|ConvertFrom-Json}}
-  throw 'The embedded model catalog could not be found.'
+  $catalogUrl='https://dsalgo-model-catalog.vercel.app/dsalgo/v1/get-catalog'
+  $lastError=$null
+  for($attempt=1;$attempt -le 3;$attempt++) {
+    try {
+      $response=Invoke-WebRequest -Uri $catalogUrl -Method Get -Headers @{Accept='application/json'} -UseBasicParsing -TimeoutSec 300 -ErrorAction Stop
+      $catalog=$response.Content|ConvertFrom-Json
+      if($catalog.schemaVersion -ne 2 -or @($catalog.models).Count -eq 0){throw 'The catalog response has an unsupported schema or no models.'}
+      foreach($model in @($catalog.models)){
+        if([string]::IsNullOrWhiteSpace([string]$model.ollamaTag)-or[string]::IsNullOrWhiteSpace([string]$model.displayName)){throw 'The catalog response contains an invalid model entry.'}
+      }
+      return $catalog
+    } catch { $lastError=$_.Exception.Message; if($attempt -lt 3){Start-Sleep -Seconds 2} }
+  }
+  throw "Unable to download the model catalog from $catalogUrl after 3 attempts. Check your internet connection and try again. $lastError"
 }
 
 function Get-Recommendations($hardware,$useCase,$preferenceMode,$vendor,$country){
