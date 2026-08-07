@@ -365,8 +365,8 @@ resolution in `CHANGELOG.md` and any resulting decision in `decision-log.md`.
 
 - Raw Ollama models do not gain agent tools merely by being selected.
 - **Known**: If the Docker gateway container cannot reach Ollama at `host.docker.internal:11434`, the Built-in General Agent will return no response (empty spinner). Verify `ollama serve` is running natively before using gateway agents.
-- **Known**: Kimi-VL `kimi-vl-a3b-thinking:latest` is listed in the catalog with `provenanceConfidence: medium`; verify tag availability on Ollama before pulling.
-- model-catalog.json `organization` field for new entries (THUDM, NVIDIA, Moonshot) must match the `$vendor` dropdown strings in `InstallerWizard.ps1` exactly for provenance filtering to work; keep both lists synchronized on catalog updates.
+- **Known**: Kimi-VL `richardyoung/kimi-vl-a3b-thinking:latest` is listed in the remote catalog with `provenanceConfidence: medium`; verify tag availability on Ollama before pulling.
+- Remote catalog `organization` values for new entries (THUDM, NVIDIA, Moonshot) must match the `$vendor` dropdown strings in `InstallerWizard.ps1` exactly for provenance filtering to work; keep both lists synchronized on catalog updates.
 - Open WebUI Workspace presets are separate from installed Ollama models and
   gateway agents; installed models do not automatically appear as editable
   Workspace presets.
@@ -582,5 +582,8 @@ resolution in `CHANGELOG.md` and any resulting decision in `decision-log.md`.
   and other applications after initial launch.
 - Installer: validate Docker update checks across winget versions with and
   without an available upgrade.
+- Catalog: periodically validate Ollama tags against the upstream catalog
+  before publishing releases.
+- Catalog: automate tag existence and metadata checks before release builds.
 - Installer: rebuild and smoke-test the categorized review page on Windows
   PowerShell 5.1 after packaging.
