@@ -202,7 +202,10 @@ separate network controls.
 | Reasoning | `deepseek-r1:14b-qwen-distill-q4_K_M` |
 | Embedding | `embeddinggemma:latest` |
 
-`config/models.json` is the source of truth.
+`config/models.json` is the source of truth for runtime model settings. The
+installer fetches the current recommendation catalog at install time from
+`https://dsalgo-model-catalog.vercel.app/dsalgo/v1/get-catalog`; catalog
+versions, model count, and entries are intentionally not bundled in releases.
 
 ## Configuration and privacy
 

@@ -990,6 +990,34 @@ merge.
 - **Consequence:** Genuine update-check failures remain warnings with log
   paths; an already-current Docker Desktop install is silent.
 
+# D-086: Track current Qwen3 Ollama tag
+
+- **Decision:** Use `qwen3:0.6b` in the catalog instead of the unavailable
+  `qwen3:0.5b` tag.
+- **Rationale:** Ollama returns `pull model manifest: file does not exist` for
+  the old tag; the current Qwen3 catalog exposes the 0.6B model.
+- **Consequence:** New installs download the valid small CPU-compatible Qwen3
+model; existing installs must rerun model setup to change tags.
+
+# D-087: Revalidate Ollama catalog tags
+
+- **Decision:** Replace the unavailable `gpt-oss:8b` tag with `gpt-oss:20b`
+  and qualify Kimi-VL with its published `richardyoung` namespace.
+- **Rationale:** Official Ollama pages list GPT-OSS 20B/120B and the Kimi-VL
+  model under the community namespace; the old entries were not pullable.
+- **Consequence:** The catalog now points at currently published tags, with
+  updated model sizes and hardware thresholds.
+
+# D-088: Fetch the recommendation catalog at install time
+
+- **Decision:** Remove the bundled `config/model-catalog.json`; installer
+  recommendation screens fetch JSON from the DSAlgo catalog service over HTTPS.
+- **Rationale:** Catalog entries and Ollama availability can change independently
+  of installer releases.
+- **Consequence:** Catalog updates no longer require rebuilding the installer;
+  installs require access to the catalog endpoint and validate schema version 2
+  and a non-empty model list before continuing.
+
 # D-082: Release persistent installer foreground forcing
 
 - **Decision:** Make the installer topmost only during its initial display,
