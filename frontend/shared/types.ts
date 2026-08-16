@@ -1,4 +1,4 @@
-export type ThemeMode = "system" | "light" | "dark";
+export type ThemeMode = "system" | "light" | "dark" | "art" | "material" | "industrial";
 export type OperatingMode = "online" | "restricted-online" | "strict-offline";
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger";
 

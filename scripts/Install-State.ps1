@@ -4,12 +4,17 @@ function Get-InstallStatePath { Join-Path $Root 'runtime\install-state.json' }
 
 function Get-InstallState {
   $path=Get-InstallStatePath
-  if(Test-Path -LiteralPath $path){return Get-Content -LiteralPath $path -Raw|ConvertFrom-Json}
+  if(Test-Path -LiteralPath $path){
+    $state=Get-Content -LiteralPath $path -Raw|ConvertFrom-Json
+    if(-not$state.PSObject.Properties['owned']){$state|Add-Member -NotePropertyName owned -NotePropertyValue ([pscustomobject]@{ollamaProfile=$false})}
+    elseif(-not$state.owned.PSObject.Properties['ollamaProfile']){$state.owned|Add-Member -NotePropertyName ollamaProfile -NotePropertyValue $false}
+    return $state
+  }
   return [pscustomobject]@{
-    schemaVersion=1; completedSteps=@(); installed=@{
+    schemaVersion=2; completedSteps=@(); installed=@{
       python=$false; ollama=$false; docker=$false
       wslFeature=$false; virtualMachinePlatform=$false
-    }; pulledModels=@(); wslConfigBackup=$null
+    }; owned=@{ollamaProfile=$false}; pulledModels=@(); wslConfigBackup=$null
   }
 }
 

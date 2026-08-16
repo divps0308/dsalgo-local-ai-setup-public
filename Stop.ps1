@@ -8,6 +8,8 @@ $commonPath = Join-Path $scriptRoot 'scripts\Common.ps1'
 if (-not (Test-Path -LiteralPath $commonPath)) { throw "Required lifecycle script was not found: $commonPath" }
 Invoke-Expression (Get-Content -LiteralPath $commonPath -Raw)
 $Root = $scriptRoot
+Write-LifecyclePhase 'stopping-native-services'
+Stop-DSAlgoProcesses -InstallRoot $Root
 function Invoke-ChildScript([string]$Name) {
   $path = Join-Path $scriptRoot $Name
   if (-not (Test-Path -LiteralPath $path)) { throw "Required lifecycle script was not found: $path" }
@@ -24,9 +26,11 @@ function Invoke-ChildScript([string]$Name) {
 Invoke-ChildScript 'Stop-DeveloperWorkbench.ps1'
 Invoke-ChildScript 'Stop-OAuthBroker.ps1'
 if(-not(Test-DockerAvailable)){throw 'Docker CLI was not found, so container services could not be stopped. Start or repair Docker Desktop, then retry.'}
+Write-LifecyclePhase 'stopping-container-services'
 Compose @('stop')
 if($RemoveRuntimeSecrets){
   $secret=Join-Path $Root 'runtime\secrets.json'
   Remove-Item -LiteralPath $secret -Force -ErrorAction SilentlyContinue
 }
+Write-LifecyclePhase 'complete'
 Write-Host 'Services stopped. Containers, images, volumes, and configuration were retained.'

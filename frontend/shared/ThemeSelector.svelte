@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Monitor, Moon, Sun } from "lucide-svelte";
+  import { Monitor, Moon, Sun, Sparkles, Layers3, Factory } from "lucide-svelte";
   import { applyTheme, initialTheme } from "./theme";
   import type { ThemeMode } from "./types";
   let mode: ThemeMode = $state("system");
@@ -7,7 +7,10 @@
   const options = [
     { value: "system" as const, label: "System", icon: Monitor },
     { value: "light" as const, label: "Light", icon: Sun },
-    { value: "dark" as const, label: "Dark", icon: Moon }
+    { value: "dark" as const, label: "Dark", icon: Moon },
+    { value: "art" as const, label: "Art", icon: Sparkles },
+    { value: "material" as const, label: "Material", icon: Layers3 },
+    { value: "industrial" as const, label: "Industrial", icon: Factory }
   ];
   $effect(() => {
     mode = initialTheme();
@@ -22,7 +25,7 @@
 
 <div style="position:relative">
   <button class="btn icon ghost" aria-label="Choose color theme" aria-expanded={open} onclick={() => open = !open}>
-    {#if mode === "light"}<Sun size={18}/>{:else if mode === "dark"}<Moon size={18}/>{:else}<Monitor size={18}/>{/if}
+    {#if mode === "light"}<Sun size={18}/>{:else if mode === "dark"}<Moon size={18}/>{:else if mode === "art"}<Sparkles size={18}/>{:else if mode === "material"}<Layers3 size={18}/>{:else if mode === "industrial"}<Factory size={18}/>{:else}<Monitor size={18}/>{/if}
   </button>
   {#if open}
     <div class="theme-menu" role="menu">
@@ -36,7 +39,7 @@
 </div>
 
 <style>
-  .theme-menu{position:absolute;right:0;top:48px;z-index:70;width:150px;padding:5px;background:var(--surface-elevated);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-md)}
+  .theme-menu{position:absolute;right:0;top:48px;z-index:70;width:170px;padding:5px;background:var(--surface-elevated);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-md)}
   .theme-menu button{width:100%;height:38px;border:0;border-radius:7px;background:transparent;color:var(--text-secondary);display:flex;align-items:center;gap:9px;padding:0 10px;cursor:pointer}
   .theme-menu button:hover,.theme-menu button.active{background:var(--accent-soft);color:var(--accent)}
 </style>

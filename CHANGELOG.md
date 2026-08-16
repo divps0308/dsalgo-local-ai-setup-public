@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- Fixed full-purge uninstall retaining the installation directory because its
+  ownership marker was checked after runtime state had already been deleted.
+- Installation now records Python, Ollama, Docker Desktop, and `.ollama`
+  profile ownership. Full purge removes the profile only when the installer
+  can prove it created it, preserving pre-existing models and identity keys.
+- Installation-directory cleanup now retries for up to 60 seconds while
+  packaged uninstall processes release their executable locks.
+
+- Fixed enabled Studio agents missing from Open WebUI by explicitly enabling
+  and configuring the local gateway with current plural OpenAI connection
+  variables while retaining compatibility with older Open WebUI releases.
+
+- Added animated progress bars and live current-step labels to the installer
+  and shared Start, Stop, Repair, Remove, and Uninstall lifecycle wizard.
+- Fixed the shared lifecycle wizard repeatedly appending the complete stdout
+  and stderr logs on every progress refresh.
+
+- Start now verifies WSL readiness and automatically starts and waits for
+  Docker Desktop and native Ollama when they are not already running.
+
+- Fixed explicit Dark appearance selection resolving to the Light palette in
+  Local Agent Studio and Developer Workbench.
+
 - Removed the Comfortable/Aggressive installer choice. WSL/Docker resource
   recommendations now consistently target approximately 50% of detected RAM
   and logical processors. GPU model recommendations use the full detected

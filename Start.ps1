@@ -34,12 +34,9 @@ function Invoke-ChildScript([string]$Name) {
 
 if($AdminPhase){
   Assert-Admin
-  $desktop=Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
-  if(-not(Get-Process -Name 'Docker Desktop' -ErrorAction SilentlyContinue)){
-    if(-not(Test-Path -LiteralPath $desktop)){throw 'Docker Desktop is not installed.'}
-    Start-Process -FilePath $desktop -WindowStyle Hidden
-  }
-  Wait-Docker
+  Write-LifecyclePhase 'checking-wsl-and-docker'
+  Ensure-DockerDesktop
+  Write-LifecyclePhase 'starting-container-services'
   Ensure-Env
   Prepare-RuntimeSecrets
   Compose @('up','-d')
@@ -53,6 +50,11 @@ $startupLog=Join-Path $scriptRoot 'runtime\start.log'
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $startupLog) | Out-Null
 function Write-StartLog([string]$Message){ "$(Get-Date -Format s) $Message" | Add-Content -LiteralPath $startupLog -Encoding UTF8 }
 Write-StartLog 'normal-user startup'
+Write-LifecyclePhase 'checking-ollama'
+Write-StartLog 'ensuring Ollama is running'
+Ensure-Ollama
+Write-StartLog 'Ollama is ready'
+Write-LifecyclePhase 'requesting-administrator-access'
   $adminArguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$(Join-Path $scriptRoot 'Start.ps1')`"","-AdminPhase")
 Write-StartLog 'starting elevated service phase'
 $process=Start-Process -FilePath (Get-Command powershell.exe).Source -Verb RunAs -ArgumentList $adminArguments -PassThru
@@ -62,6 +64,7 @@ if(-not $process.HasExited){throw 'Elevated service startup exceeded 180 seconds
 Write-StartLog "elevated service phase returned (PID $($process.Id))"
 $adminExitCode=Get-CompletedProcessExitCode $process
 if($adminExitCode-ne 0){throw "Elevated service startup failed with exit code $adminExitCode."}
+Write-LifecyclePhase 'starting-native-services'
 Write-StartLog 'starting OAuth broker'
 Invoke-ChildScript 'Start-OAuthBroker.ps1'
 Write-StartLog 'starting Developer Workbench'
@@ -103,4 +106,5 @@ try {
   Write-StartLog 'browser launch requested'
 } catch { Write-Warning "Could not open the default browser: $($_.Exception.Message)" }
 Write-StartLog 'startup complete'
+Write-LifecyclePhase 'complete'
 Write-Host 'All selected services are running. Container services were elevated; native Workbench and OAuth processes run as the current user.'

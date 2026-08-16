@@ -1,5 +1,57 @@
 ﻿# Functionality and Architecture Decision Log
 
+## D-092: Prove ownership before full uninstall cleanup
+
+- **Status:** Accepted.
+- **Decision:** Capture installation-directory ownership before runtime deletion,
+  persist prerequisite ownership across resumptions, and mark the `.ollama`
+  profile owned only when installer-owned Ollama setup created a previously
+  absent profile directory.
+- **Rationale:** Full purge must reliably remove installer-owned files without
+  deleting pre-existing Ollama models, caches, or identity keys.
+- **Consequences:** Legacy states conservatively treat `.ollama` as user-owned.
+  Packaged directory cleanup retries while executable locks drain; externally
+  registered project roots remain outside the deletion boundary.
+
+## D-091: Declare the Open WebUI agent-gateway connection explicitly
+
+- **Status:** Accepted.
+- **Decision:** Configure Open WebUI with enabled singular and plural
+  OpenAI-compatible connection variables and an explicit enabled connection
+  record for the local Agent Gateway.
+- **Rationale:** Open WebUI versions differ in singular/plural compatibility,
+  and persisted connection state can otherwise leave the healthy gateway out
+  of the model selector.
+- **Consequences:** New volumes discover enabled Studio agents on first start.
+  Existing Open WebUI volumes may require a one-time scoped connection reset;
+  chats, accounts, Ollama access, and unrelated UI settings remain preserved.
+
+## D-090: Show phase-aware animated lifecycle progress
+
+- **Status:** Accepted.
+- **Decision:** Install and the shared lifecycle wizard display an animated
+  indeterminate progress bar, a current-step label, and detailed captured logs.
+  Lifecycle scripts publish non-sensitive phase names through a process-local
+  progress-file path inherited across UAC elevation.
+- **Rationale:** Long-running model, Docker, build, and cleanup operations need
+  visible activity and an understandable current step even when an elevated
+  child process cannot stream stdout directly to the original window.
+- **Consequences:** Progress communicates activity rather than a fabricated
+  percentage. Runtime progress files contain timestamps and phase names only;
+  detailed stdout and stderr remain in their existing logs.
+
+## D-089: Make Start recover required local runtimes
+
+- **Status:** Accepted.
+- **Decision:** Start health-checks native Ollama, verifies that WSL is ready,
+  and starts Docker Desktop when the Docker engine is unavailable before
+  starting application services.
+- **Rationale:** The normal launcher should recover a stopped local stack after
+  sign-in without requiring users to start each runtime manually.
+- **Consequences:** Startup remains bounded by readiness timeouts and fails with
+  actionable prerequisite errors. Docker Desktop activates its own WSL2
+  backend; Start does not launch or require a separate user Linux distribution.
+
 ## D-046: Enforce structured progress at the Workbench boundary
 
 - **Status:** Accepted.

@@ -89,7 +89,7 @@
     if(!mcp)return;
     const method=action==="status"?"GET":"POST";
     try{
-      const result=await json(`/api/mcp/${action==="test"?"test":`oauth/${encodeURIComponent(mcp.id)}/${action}`}${action==="test"?`/${encodeURIComponent(mcp.id)}`:""}`,{method});
+      const endpoint=`/api/mcp/${action==="test"?`test/${encodeURIComponent(mcp.id)}`:`oauth/${encodeURIComponent(mcp.id)}/${action}`}`; const result=await json(endpoint,{method,body:action==="test"||action==="authorize"?JSON.stringify({server:mcp}):undefined});
       diagnostics[mcp.id]=JSON.stringify(result,null,2); diagnostics={...diagnostics};
       if(action==="authorize"&&result.authorizeUrl) window.open(result.authorizeUrl,"_blank","noopener,noreferrer");
       if(action==="status"||action==="disconnect") oauth[mcp.id]=result;

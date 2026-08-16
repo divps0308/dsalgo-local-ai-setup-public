@@ -14,6 +14,14 @@ if ([string]::IsNullOrWhiteSpace($Root)) { $Root = (Get-Location).Path }
 if ([string]::IsNullOrWhiteSpace($Root)) { throw 'Cannot determine the DSAlgo Local AI Setup directory.' }
 function Test-IsAdmin { $p=New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent()); return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) }
 function Assert-Admin { if(-not(Test-IsAdmin)){throw 'Run PowerShell as Administrator.'} }
+function Write-LifecyclePhase([string]$Name) {
+  if([string]::IsNullOrWhiteSpace($Name)){return}
+  Write-Host "Phase: $Name"
+  $progressPath=[Environment]::GetEnvironmentVariable('DSALGO_LIFECYCLE_PROGRESS','Process')
+  if(-not[string]::IsNullOrWhiteSpace($progressPath)){
+    try{"$(Get-Date -Format s)|$Name" | Add-Content -LiteralPath $progressPath -Encoding UTF8}catch{}
+  }
+}
 function Get-CompletedProcessExitCode([Diagnostics.Process]$Process) {
   if (-not $Process) { throw 'The child process could not be started.' }
   $Process.WaitForExit()
@@ -31,6 +39,27 @@ function Get-DockerExecutable {
   throw 'Docker CLI was not found. Start or repair Docker Desktop, then retry.'
 }
 function Test-DockerAvailable { try{$null=Get-DockerExecutable;return $true}catch{return $false} }
+function Assert-WSLReady {
+  $wsl=Get-Command wsl.exe -ErrorAction SilentlyContinue
+  if(-not$wsl){throw 'WSL was not found. Rerun Install.exe and restart Windows if prompted.'}
+  foreach($featureName in @('Microsoft-Windows-Subsystem-Linux','VirtualMachinePlatform')){
+    $feature=Get-WindowsOptionalFeature -Online -FeatureName $featureName
+    if($feature.State-ne 'Enabled'){
+      throw "Required Windows feature $featureName is not enabled. Rerun Install.exe and restart Windows if prompted."
+    }
+  }
+}
+function Ensure-DockerDesktop([int]$Seconds=180) {
+  Assert-WSLReady
+  $docker=Get-DockerExecutable
+  try{& $docker info *> $null;if($LASTEXITCODE-eq 0){return}}catch{}
+  $desktop=Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
+  if(-not(Test-Path -LiteralPath $desktop)){throw 'Docker Desktop is not installed. Rerun Install.exe, then retry.'}
+  if(-not(Get-Process -Name 'Docker Desktop' -ErrorAction SilentlyContinue)){
+    Start-Process -FilePath $desktop -WindowStyle Hidden | Out-Null
+  }
+  Wait-Docker -Seconds $Seconds
+}
 function Get-NativePython {
   $candidates=@()
   $command=Get-Command python.exe -ErrorAction SilentlyContinue
@@ -73,7 +102,55 @@ function Test-OAuthBroker {
   try{$response=Invoke-WebRequest "http://localhost:$port/health" -UseBasicParsing -TimeoutSec 5;return ($response.StatusCode -eq 200)}catch{return $false}
 }
 function Wait-Docker([int]$Seconds=180){$docker=Get-DockerExecutable;$end=(Get-Date).AddSeconds($Seconds);do{try{& $docker info *> $null;if($LASTEXITCODE-eq0){return}}catch{};Start-Sleep 3}while((Get-Date)-lt$end);throw 'Docker Desktop did not become ready.'}
-function Get-SystemIanaTimeZone([string]$WindowsTimeZoneId = [TimeZoneInfo]::Local.Id) {
+function Get-OllamaExecutable {
+  $command = Get-Command ollama.exe -ErrorAction SilentlyContinue
+  if ($command -and -not [string]::IsNullOrWhiteSpace([string]$command.Source)) { return $command.Source }
+  $candidates = @()
+  if ($env:LOCALAPPDATA) {
+    $candidates += Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama.exe'
+    $candidates += Join-Path $env:LOCALAPPDATA 'Ollama\ollama.exe'
+  }
+  if ($env:ProgramFiles) { $candidates += Join-Path $env:ProgramFiles 'Ollama\ollama.exe' }
+  foreach ($candidate in $candidates) { if (Test-Path -LiteralPath $candidate) { return $candidate } }
+  throw 'Ollama was not found. Run Install.exe to install Ollama, then retry.'
+}
+function Test-OllamaAvailable([string]$BaseUrl = 'http://127.0.0.1:11434') {
+  try { $response = Invoke-WebRequest "$BaseUrl/api/tags" -UseBasicParsing -TimeoutSec 5; return ($response.StatusCode -eq 200) } catch { return $false }
+}
+function Ensure-Ollama([int]$Seconds = 90) {
+  if (Test-OllamaAvailable) { return }
+  $ollama = Get-OllamaExecutable
+  $runtime = Join-Path $Root 'runtime'; New-Item -ItemType Directory -Force -Path $runtime | Out-Null
+  $stdout = Join-Path $runtime 'ollama-serve.stdout.log'; $stderr = Join-Path $runtime 'ollama-serve.stderr.log'
+  if (-not (Get-Process -Name 'ollama' -ErrorAction SilentlyContinue)) {
+    Start-Process -FilePath $ollama -ArgumentList @('serve') -WorkingDirectory $Root -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr | Out-Null
+  }
+  $deadline = (Get-Date).AddSeconds($Seconds)
+  do { if (Test-OllamaAvailable) { return }; Start-Sleep -Seconds 2 } while ((Get-Date) -lt $deadline)
+  throw "Ollama did not become ready within $Seconds seconds. See $stdout and $stderr."
+}
+function Stop-DSAlgoProcesses {
+  param([string]$InstallRoot = $Root)
+  $normalized = [IO.Path]::GetFullPath($InstallRoot).TrimEnd('\') + '\'
+  $currentPid = [Diagnostics.Process]::GetCurrentProcess().Id
+  try {
+    $allProcesses = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+    $protected = [Collections.Generic.HashSet[int]]::new()
+    $cursor = $currentPid
+    while ($cursor -and $protected.Add([int]$cursor)) {
+      $parent = $allProcesses | Where-Object ProcessId -eq $cursor | Select-Object -First 1
+      $cursor = if ($parent) { [int]$parent.ParentProcessId } else { 0 }
+    }
+    $allProcesses | ForEach-Object {
+      if ($protected.Contains([int]$_.ProcessId)) { return }
+      $path = [string]$_.ExecutablePath
+      $command = [string]$_.CommandLine
+      if (($path -and $path.StartsWith($normalized, [StringComparison]::OrdinalIgnoreCase)) -or ($command -and $command.IndexOf($normalized, [StringComparison]::OrdinalIgnoreCase) -ge 0)) {
+        try { Stop-Process -Id ([int]$_.ProcessId) -Force -ErrorAction SilentlyContinue } catch { }
+      }
+    }
+  } catch { Write-Warning "Could not enumerate all DSAlgo processes: $($_.Exception.Message)" }
+}function Get-SystemIanaTimeZone([string]$WindowsTimeZoneId = [TimeZoneInfo]::Local.Id) {
   if([string]::IsNullOrWhiteSpace($WindowsTimeZoneId)){throw 'Windows did not report a system time-zone identifier.'}
   if($WindowsTimeZoneId.Contains('/')){return $WindowsTimeZoneId}
   $mappingFile=Join-Path $Root 'scripts\windows-time-zones.json'

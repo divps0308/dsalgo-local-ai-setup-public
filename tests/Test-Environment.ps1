@@ -23,4 +23,18 @@ $failed=$false
 try{Get-SystemIanaTimeZone 'Unknown Test Time Zone'|Out-Null}catch{$failed=$true}
 if(-not$failed){throw 'An unknown Windows time zone must fail with an actionable error.'}
 
-Write-Host 'Environment time-zone tests passed.'
+function Get-WindowsOptionalFeature {
+  param([switch]$Online,[string]$FeatureName)
+  [pscustomobject]@{FeatureName=$FeatureName;State='Enabled'}
+}
+Assert-WSLReady
+
+function Get-WindowsOptionalFeature {
+  param([switch]$Online,[string]$FeatureName)
+  [pscustomobject]@{FeatureName=$FeatureName;State=if($FeatureName-eq'VirtualMachinePlatform'){'Disabled'}else{'Enabled'}}
+}
+$failed=$false
+try{Assert-WSLReady}catch{$failed=$_.Exception.Message-match'VirtualMachinePlatform'}
+if(-not$failed){throw 'Disabled WSL dependencies must fail with the affected Windows feature name.'}
+
+Write-Host 'Environment tests passed.'

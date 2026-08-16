@@ -141,7 +141,9 @@ function New-RecommendGrid([bool]$Selectable){
 $recommendGrid=New-RecommendGrid $true;$supportedGrid=New-RecommendGrid $true;$unsupportedGrid=New-RecommendGrid $false;$recommendGrids=@($recommendGrid,$supportedGrid,$unsupportedGrid)
 $recommendIntro=New-Object Windows.Forms.Label;$recommendIntro.Location=New-Object Drawing.Point(0,0);$recommendIntro.Size=New-Object Drawing.Size(740,24)
 $recommendSummary=New-Object Windows.Forms.Label;$recommendSummary.Location=New-Object Drawing.Point(0,344);$recommendSummary.Size=New-Object Drawing.Size(740,58)
-$progress=New-Object Windows.Forms.TextBox;$progress.Multiline=$true;$progress.ReadOnly=$true;$progress.ScrollBars='Both';$progress.WordWrap=$false;$progress.Size=New-Object Drawing.Size(720,380);$progress.Font=New-Object Drawing.Font('Consolas',9)
+$progressStep=New-Object Windows.Forms.Label;$progressStep.Text='Ready';$progressStep.Location=New-Object Drawing.Point(5,5);$progressStep.Size=New-Object Drawing.Size(720,24);$progressStep.Font=New-Object Drawing.Font('Segoe UI',10,[Drawing.FontStyle]::Bold)
+$progressBar=New-Object Windows.Forms.ProgressBar;$progressBar.Location=New-Object Drawing.Point(5,34);$progressBar.Size=New-Object Drawing.Size(720,18);$progressBar.Style='Marquee';$progressBar.MarqueeAnimationSpeed=0
+$progress=New-Object Windows.Forms.TextBox;$progress.Multiline=$true;$progress.ReadOnly=$true;$progress.ScrollBars='Both';$progress.WordWrap=$false;$progress.Location=New-Object Drawing.Point(5,64);$progress.Size=New-Object Drawing.Size(720,340);$progress.Font=New-Object Drawing.Font('Consolas',9)
 
 function Add-Row($label,$control,$y){
   $l=New-Object Windows.Forms.Label;$l.Text=$label;$l.Location=New-Object Drawing.Point(5,$y);$l.Size=New-Object Drawing.Size(190,24)
@@ -202,13 +204,14 @@ function Show-Page {
       foreach($g in $groups){$count=@($g[2]).Count;$cue=if($count-gt2){' — scroll to view all'}else{''};$label=New-Object Windows.Forms.Label;$label.Text="$($g[0]) ($count)$cue";$label.Location=New-Object Drawing.Point -ArgumentList 0,$y;$label.Size=New-Object Drawing.Size -ArgumentList 740,20;$grid=$g[1];$grid.Location=New-Object Drawing.Point -ArgumentList 0,($y+20);$grid.Size=New-Object Drawing.Size -ArgumentList 750,95;Add-RecommendationRows $grid $g[2] $g[3];$content.Controls.AddRange(@($label,$grid));$y+=122}
       $recommendSummary.Location=New-Object Drawing.Point(0,398);$content.Controls.AddRange(@($recommendIntro,$recommendSummary));$next.Text='Install';Update-RecommendationSummary
     }
-    5{$title.Text='Installing DSAlgo Local AI Setup';$content.Controls.Add($progress);$back.Enabled=$false;$next.Enabled=$false}
+    5{$title.Text='Installing DSAlgo Local AI Setup';$content.Controls.AddRange(@($progressStep,$progressBar,$progress));$back.Enabled=$false;$next.Enabled=$false}
     6{$title.Text='Installation complete';$done=New-Object Windows.Forms.Label;$done.Text='The setup was installed successfully and is currently stopped. Use Start from the Desktop or Start Menu.';$done.Location=New-Object Drawing.Point(10,30);$done.Size=New-Object Drawing.Size(700,80);$content.Controls.Add($done);$back.Enabled=$false;$next.Text='Finish'}
   }
   $form.BringToFront();$form.Activate()
 }
 function Append-Progress([string]$text){
   if([string]::IsNullOrEmpty($text)){return}
+  if($text-match'^Phase:\s*(.+)$'){$name=$matches[1] -replace '[-_]',' ';$progressStep.Text=$name.Substring(0,1).ToUpperInvariant()+$name.Substring(1)}
   if($text-match'^(?:Phase: complete|Installation is complete)'){$script:installerSawComplete=$true}
   if($text-match'Windows must restart'){$script:installerSawRestartRequired=$true}
   if($progress.InvokeRequired){$progress.BeginInvoke([Action[string]]{param($s)$progress.AppendText($s+"`r`n");$progress.SelectionStart=$progress.TextLength;$progress.ScrollToCaret()},$text)|Out-Null}else{$progress.AppendText($text+"`r`n")}
@@ -235,6 +238,7 @@ function Start-Installation {
   $payload=Join-Path $releaseRoot 'payload';if(Test-Path (Join-Path $payload 'Install.ps1')){$releaseRoot=$payload}
   New-Item -ItemType Directory -Force -Path $target|Out-Null
   Append-Progress "Copying payload to $target"
+  $progressStep.Text='Copying application files';$progressBar.Style='Marquee';$progressBar.MarqueeAnimationSpeed=30
   Get-ChildItem $releaseRoot -Force|Where-Object{$_.Name-notin@('.git','dist','artifacts','.env','runtime','backups','node_modules','.pnpm-store')}|ForEach-Object{Copy-Item $_.FullName $target -Recurse -Force}
   Get-ChildItem $exeRoot -Filter '*.exe' -File -ErrorAction SilentlyContinue|ForEach-Object{Copy-Item $_.FullName $target -Force}
   $chosen=@(Get-SelectedRecommendations)
@@ -349,17 +353,21 @@ $installMonitor.Add_Tick({
     # PS2EXE can expose no exit code even after the child writes its terminal
     # phase. The explicit phase is the authoritative success signal in that case.
     if ($script:installerSawRestartRequired) {
+      $progressBar.MarqueeAnimationSpeed=0;$progressBar.Style='Continuous';$progressBar.Value=100;$progressStep.Text='Restart required'
       Append-Progress 'Windows restart required. Restart Windows, then run Install.exe from the installed folder to resume installation.'
       $next.Enabled=$false;$cancel.Text='Close'
     }elseif ($script:installerSawComplete -and ((-not $hasExitCode) -or $script:installerExitCode -eq 0)) {
+      $progressBar.MarqueeAnimationSpeed=0;$progressBar.Style='Continuous';$progressBar.Value=100;$progressStep.Text='Complete'
       $script:page=6;Show-Page
     }else{
+      $progressBar.MarqueeAnimationSpeed=0;$progressBar.Style='Continuous';$progressBar.Value=100;$progressStep.Text='Failed'
       $exitDescription=if($hasExitCode){[string]$script:installerExitCode}else{'unavailable'}
       Append-Progress "Installation failed with exit code $exitDescription. Review runtime\\installer-child.stderr.log for the full error."
       $next.Enabled=$false;$cancel.Text='Close'
     }
   }catch{
     $installMonitor.Stop()
+    $progressBar.MarqueeAnimationSpeed=0;$progressBar.Style='Continuous';$progressBar.Value=100;$progressStep.Text='Failed'
     Append-Progress "ERROR: Installer progress monitor stopped: $($_.Exception.Message)"
     $next.Enabled=$false;$cancel.Text='Close'
   }

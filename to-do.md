@@ -1,5 +1,12 @@
 ﻿# Limitations and To-Do Register
 
+- UI/UX: Add a version-aware, supported Open WebUI connection migration API so
+  stale persisted gateway settings can be repaired automatically without a
+  scoped database update or manual Admin Settings change.
+
+- Backend: Validate Start's automatic WSL, Docker Desktop, and Ollama recovery
+  on clean Windows boots and across supported Docker Desktop/WSL versions.
+
 - Backend: Validate multimodal agent requests end to end with Open WebUI
   attachments across supported vision and document models. The gateway accepts
   local base64 image and document blocks, while remote attachment URLs and
@@ -16,9 +23,6 @@
 - Backend: Validate text-serialized JSON tool-call recovery across the supported
   small Ollama coding models; the compatibility path is intentionally limited
   to one exact `{name, arguments}` object and still requires normal approvals.
-
-- Consolidate lifecycle operations into a shared single-window progress wizard
-  with Next/Cancel navigation and captured stdout/stderr.
 
 - Validate new-window/tab behavior across supported default browsers and
   Windows browser policies.
@@ -104,6 +108,9 @@
 - UI/UX: Test the file-backed wizard output monitor on long model downloads,
   prerequisite fallbacks, restarts, failures, and cancellation; it now retains
   durable child stdout/stderr but has not yet had automated UI coverage.
+- UI/UX: Validate animated lifecycle progress bars and cross-elevation current
+  step updates in packaged Install, Start, Stop, Repair, Remove, and Uninstall
+  executables, including success, failure, UAC cancellation, and restart paths.
 - UI/UX: Regression-test empty and delayed child stdout/stderr files in the
   wizard progress monitor; the empty-log handling was fixed but needs automated
   coverage across PowerShell and PS2EXE versions.
@@ -119,6 +126,9 @@
   each browser opens a new window or reuses an existing window.
 - Testing/lifecycle: Verify Uninstall removes Installed Apps registration and
   every shortcut location without removing user-owned project roots or data.
+- Testing/lifecycle: Exercise installer-owned versus pre-existing `.ollama`
+  profiles through full packaged install/uninstall cycles, including locked
+  files and mixed installer/user model ownership.
 - Testing/lifecycle: Verify the five-entry Start Menu folder and four Desktop
   shortcuts on redirected Desktop paths and after rerunning Install/Repair.
 - Testing/lifecycle: Exercise native child scripts directly under Windows

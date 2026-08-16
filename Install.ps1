@@ -108,12 +108,22 @@ if($restartNeeded){
 Complete-InstallStep $state 'wsl'
 Write-InstallPhase 'applications'
 
-try{$null=Get-NativePython}catch{
+$pythonWasInstalled=$true;try{$null=Get-NativePython}catch{$pythonWasInstalled=$false}
+$ollamaWasInstalled=$true;try{$null=Get-OllamaExecutable}catch{$ollamaWasInstalled=$false}
+$dockerWasInstalled=Test-DockerAvailable
+$ollamaProfile=Join-Path $env:USERPROFILE '.ollama'
+$ollamaProfileExisted=Test-Path -LiteralPath $ollamaProfile
+if(-not$pythonWasInstalled){
   Ensure-Prerequisite 'Python' 'python.exe' 'Python.Python.3.12' 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' @('/quiet','InstallAllUsers=0','PrependPath=1')
   $null=Get-NativePython
 }
 Ensure-Prerequisite 'Ollama' 'ollama.exe' 'Ollama.Ollama' 'https://ollama.com/download/OllamaSetup.exe' @('/SILENT')
 Ensure-Prerequisite 'Docker Desktop' 'docker.exe' 'Docker.DockerDesktop' 'https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe' @('install','--quiet')
+$state.installed.python=[bool]$state.installed.python-or-not$pythonWasInstalled
+$state.installed.ollama=[bool]$state.installed.ollama-or-not$ollamaWasInstalled
+$state.installed.docker=[bool]$state.installed.docker-or-not$dockerWasInstalled
+$state.owned.ollamaProfile=[bool]$state.owned.ollamaProfile-or($state.installed.ollama-and-not$ollamaProfileExisted)
+Save-InstallState $state
 $dockerBin=Join-Path $env:ProgramFiles 'Docker\Docker\resources\bin'
 if((Test-Path -LiteralPath $dockerBin)-and($env:Path-notlike"*$dockerBin*")){$env:Path="$dockerBin;$env:Path"}
 Complete-InstallStep $state 'applications'

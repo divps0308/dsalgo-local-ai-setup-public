@@ -712,18 +712,34 @@ stateDiagram-v2
 ```
 
 `runtime/install-state.json` records completed installation steps and ownership
-of Python, Ollama, Docker Desktop, Windows features, pulled models, and the
-pre-install WSL configuration backup. Uninstall only removes prerequisites it
-can prove this installer added.
+of Python, Ollama, Docker Desktop, Windows features, the `.ollama` profile,
+pulled models, and the pre-install WSL configuration backup. Uninstall captures
+the installation-directory marker before optional runtime deletion and removes
+only prerequisites and profile data it can prove this installer added.
 
 Start uses two phases:
 
-1. The normal user launches `Start.ps1`.
-2. UAC starts `-AdminPhase` for Docker Desktop, runtime secrets, and Compose.
+1. The normal user launches `Start.ps1`, which health-checks the native Ollama
+   API and starts `ollama serve` when needed.
+2. UAC starts `-AdminPhase`, which verifies WSL, starts Docker Desktop when its
+   engine is unavailable, waits for Docker's WSL2 backend, and starts Compose.
 3. After that phase exits, the original normal-user process starts OAuth broker
    and Workbench.
 
 This prevents privileged inheritance by native high-trust services.
+
+The installer and shared lifecycle wizard show indeterminate animated progress
+with a current phase. `Write-LifecyclePhase` writes non-sensitive phase names
+to stdout and, when the wizard supplies `DSALGO_LIFECYCLE_PROGRESS`, to an
+operation-specific runtime file inherited across UAC elevation. The wizard
+tails phase/stdout/stderr files incrementally and never treats animation as a
+completion percentage.
+
+Open WebUI receives the Agent Gateway through both the singular legacy and
+plural current OpenAI-compatible environment variables. `OPENAI_API_CONFIGS`
+marks that local connection enabled. Open WebUI persists these settings in its
+own volume after first launch, so upgrades must preserve user data and use a
+scoped connection migration rather than deleting the volume.
 
 ## 16. Data persistence and backup
 
