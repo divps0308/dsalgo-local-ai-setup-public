@@ -461,16 +461,11 @@ def load_dynamic_config() -> dict[str, Any]:
 
 
 def effective_agents() -> dict[str, dict[str, Any]]:
-    agents = {
-        key: {"id": key, "name": MODEL_NAMES[key], "modelRole": {"agent-general":"general","agent-coder":"coder","agent-reasoning":"reasoning"}[key], "instructions": SYSTEM_PROMPTS.get(key, ""), "builtinTools": PROFILE_TOOLS.get(key, []), "mcpServers": [], "enabled": True}
-        for key in MODEL_NAMES if key != "agent-orchestrator"
-    }
-    agents["agent-orchestrator"] = {"id": "agent-orchestrator", "name": MODEL_NAMES["agent-orchestrator"], "orchestrator": True, "enabled": True}
-    for item in load_dynamic_config().get("agents", []):
-        if isinstance(item, dict) and item.get("id"):
-            agents[item["id"]] = item
-    return {k: v for k, v in agents.items() if v.get("enabled", True)}
-
+    agents: dict[str, dict[str, Any]] = {}
+    for item in load_dynamic_config().get('agents', []):
+        if isinstance(item, dict) and item.get('id') and item.get('enabled', True):
+            agents[str(item['id'])] = item
+    return agents
 
 def mcp_servers() -> dict[str, dict[str, Any]]:
     mode = runtime_policy()["mode"]

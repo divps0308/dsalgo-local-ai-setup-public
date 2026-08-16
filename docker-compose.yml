@@ -7,8 +7,12 @@ services:
     ports: ["${OPEN_WEBUI_PORT:-3000}:8080"]
     environment:
       OLLAMA_BASE_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      ENABLE_OPENAI_API: "true"
       OPENAI_API_BASE_URL: http://local-agent-gateway:8000/v1
       OPENAI_API_KEY: ${AGENT_API_KEY}
+      OPENAI_API_BASE_URLS: http://local-agent-gateway:8000/v1
+      OPENAI_API_KEYS: ${AGENT_API_KEY}
+      OPENAI_API_CONFIGS: '{"0":{"enable":true,"provider":"local-agent-gateway"}}'
       WEBUI_AUTH: "true"
       ENABLE_SIGNUP: "true"
       TZ: ${TZ:-Etc/UTC}

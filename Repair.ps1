@@ -19,14 +19,21 @@ $Root = $scriptRoot
 Invoke-Expression (Get-Content -LiteralPath (Join-Path $scriptRoot 'scripts\Configuration.ps1') -Raw)
 Invoke-Expression (Get-Content -LiteralPath (Join-Path $scriptRoot 'scripts\Shortcuts.ps1') -Raw)
 Assert-Admin
+Write-LifecyclePhase 'checking-docker'
 Wait-Docker
+Write-LifecyclePhase 'stopping-services'
 & (Get-Command powershell.exe).Source -NoProfile -ExecutionPolicy Bypass -File (Join-Path $scriptRoot 'Stop-DeveloperWorkbench.ps1')
 & (Get-Command powershell.exe).Source -NoProfile -ExecutionPolicy Bypass -File (Join-Path $scriptRoot 'Stop-OAuthBroker.ps1')
 Compose @('down','--remove-orphans')
+Write-LifecyclePhase 'validating-configuration'
 Assert-GenericConfiguration
 Ensure-Env
 Prepare-RuntimeSecrets
+Write-LifecyclePhase 'building-images'
 Compose @('build')
+Write-LifecyclePhase 'creating-containers'
 Compose @('create','--remove-orphans')
+Write-LifecyclePhase 'refreshing-shortcuts'
 Install-LocalAIShortcuts
+Write-LifecyclePhase 'complete'
 Write-Host 'Repair complete. Images were rebuilt and containers recreated in the stopped state. Run .\Start.ps1 when ready.'

@@ -139,6 +139,8 @@ Right-click `install.exe` and choose **Run as administrator**. Follow the
 single installer window, accept the displayed `LICENSE` and third-party
 notice, review hardware, choose model preferences, and confirm installation.
 No repository checkout or PowerShell execution-policy change is required.
+The installation page shows an animated progress bar, the current phase, and
+scrollable detailed output while setup is running.
 
 The installer:
 
@@ -209,8 +211,19 @@ Windows shows a UAC prompt. That elevated phase starts Docker and container
 services. The original normal-user process then starts Developer Workbench and
 the OAuth broker without Administrator privileges.
 
+Start checks that WSL is available, starts Docker Desktop when its engine is
+not already ready, and waits for Docker's WSL2 backend. It also checks the
+native Ollama API and starts `ollama serve` when needed before bringing up the
+remaining services.
+
 The launcher starts services and opens Open WebUI, Local Agent Studio, and
 Developer Workbench in a browser window.
+
+Enabled agents saved in Local Agent Studio appear in Open WebUI's model
+selector through the local Agent Gateway. Open WebUI also lists raw Ollama
+models separately. If agents are missing after upgrading an existing install,
+run Repair and refresh Open WebUI; older volumes may retain a stale disabled
+OpenAI-compatible connection that must be re-enabled under Admin Settings.
 
 ## 7. Stopping, repairing, removing, and uninstalling
 
@@ -225,6 +238,10 @@ reported as incomplete or blocked. Install the missing dependency or rerun the
 task with an agent/model that reliably supports tool calls.
 
 These commands deliberately do different things.
+
+The Start, Stop, Repair, Remove, and Uninstall executables use a shared wizard
+with an animated progress bar, a current-step label, and captured diagnostic
+output. The animation indicates active work; it is not an estimated percentage.
 
 ### Stop and keep everything
 
@@ -263,19 +280,23 @@ Type `UNINSTALL` when prompted. Uninstall removes project containers, locally
 built project images, shortcuts, and applications recorded as installed by this
 installer.
 
-The wizard presents an unchecked **Permanently remove installer-owned
-Docker images, volumes, and downloaded models** option. Selecting it is
-equivalent to selecting the model/data cleanup options. Leave it unchecked to
-retain reusable models and Docker data.
+The wizard presents an unchecked **Permanently remove installer-owned Docker
+data, models, and an installer-created Ollama profile** option. Selecting it is
+equivalent to selecting the model/data cleanup options. The whole `.ollama`
+profile is deleted only when installation state proves this installer created
+it; a pre-existing profile and its identity keys or unrelated models remain.
+Leave it unchecked to retain reusable models and Docker data.
 
 - `-RemoveModels` deletes models recorded as pulled by this installer.
 - `-RemoveData` deletes project Docker volumes, generated credentials, runtime
-  state, and personal configuration snapshots.
+  state, personal configuration snapshots, and an installer-owned `.ollama`
+  profile when ownership is recorded.
 - `-RemoveWindowsFeatures` disables WSL-related features only when the install
   record proves this project enabled them.
 
-The source directory and every external project registered in Workbench are
-intentionally retained.
+The installer-owned application directory is removed after cleanup. The
+original extracted release package and every external project registered in
+Workbench are intentionally retained.
 
 ## 8. Checking health
 

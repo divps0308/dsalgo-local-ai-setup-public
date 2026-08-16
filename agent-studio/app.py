@@ -122,8 +122,9 @@ def put_config(payload: Payload):
     save({"mcpServers":data.get('mcpServers',[]),"agents":data.get('agents',[])})
     return {"ok":True}
 @app.post("/api/mcp/test/{server_id}")
-def test_mcp(server_id: str):
-    server=next((x for x in load().get('mcpServers',[]) if x.get('id')==server_id),None)
+def test_mcp(server_id: str, payload: dict[str, Any] | None = None):
+    draft = payload.get('server') if isinstance(payload, dict) else None
+    server = draft if isinstance(draft, dict) and draft.get('id') == server_id else next((x for x in load().get('mcpServers',[]) if x.get('id') == server_id),None)
     if not server: raise HTTPException(404,'Server not found')
     if load_policy()["mode"]!="online" and server.get("offlineCapable") is not True: raise HTTPException(409,"External MCP testing is blocked by the operating mode")
     headers={"Accept":"application/json, text/event-stream","Content-Type":"application/json",**(server.get('headers') or {})}

@@ -9,7 +9,7 @@
     <meta name="workbench-token" content="__TOKEN__" />
     <script>
       (() => {
-        const mode = localStorage.getItem("local-ai-theme") || "system";
+        const mode = localStorage.getItem("dsalgo-local-ai-theme") || "system";
         const resolved = mode === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : mode;
         document.documentElement.dataset.theme = resolved;
       })();
